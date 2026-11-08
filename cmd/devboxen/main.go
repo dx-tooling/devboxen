@@ -185,9 +185,8 @@ func splitFlags(args []string, valued map[string]bool) (pos []string, opts map[s
 	opts = map[string]string{}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "--" {
-			pos = append(pos, args[i+1:]...)
-			break
+		if arg == "--" { // as task runners (mise) pass it along: no meaning here
+			continue
 		}
 		if !strings.HasPrefix(arg, "--") {
 			pos = append(pos, arg)

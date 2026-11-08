@@ -7,7 +7,7 @@ import (
 )
 
 func TestSplitFlags(t *testing.T) {
-	pos, opts, err := splitFlags([]string{"box", "--mem", "4g", "--cpus=2", "--check", "x"},
+	pos, opts, err := splitFlags([]string{"box", "--", "--mem", "4g", "--cpus=2", "--check", "x"},
 		map[string]bool{"mem": true, "cpus": true, "check": false})
 	if err != nil || len(pos) != 2 || pos[1] != "x" || opts["mem"] != "4g" || opts["cpus"] != "2" || opts["check"] != "true" {
 		t.Fatalf("%v %v %v", pos, opts, err)
