@@ -681,7 +681,7 @@ window.addEventListener("pageshow", (e) => { if (e.persisted) backInTab(); });
 
 const TOUCH = window.matchMedia("(pointer: coarse)");
 const KEYS = [
-  ["esc", "Esc"], ["tab", "Tab"], ["stab", "⇧Tab"], ["ctrl", "Ctrl"], ["alt", "Alt"],
+  ["esc", "Esc"], ["tab", "Tab"], ["stab", "Shift-Tab", "Shift-Tab (in Claude Code: switch the mode)"], ["ctrl", "Ctrl"], ["alt", "Alt"],
   ["left", "←"], ["up", "↑"], ["down", "↓"], ["right", "→"],
   ["^c", "^C"], ["^b", "^B", "tmux prefix"],
   ["|"], ["~"], ["/"], ["-"], ["_"], ["\\"], ["`"],
