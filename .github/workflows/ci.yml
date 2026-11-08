@@ -42,6 +42,11 @@ jobs:
       - uses: opentofu/setup-opentofu@v1
       - run: tofu fmt -check -recursive tofu/
       - run: cd tofu/aws-host && tofu init -backend=false -input=false && tofu validate
+      # The configuration `devboxen host add` writes, with this module.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: DEVBOXEN_TOFU_VALIDATE=1 go test -run TestAWSRootValidates ./cmd/devboxen/
 
   shell:
     runs-on: ubuntu-24.04

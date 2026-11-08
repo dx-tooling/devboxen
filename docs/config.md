@@ -5,8 +5,9 @@ the current directory and the directories above it, then in `~/.config/devboxen/
 environment variable `DEVBOXEN_CONFIG` names another file. Paths in the file are relative
 to the file's directory.
 
-Keep the file in a private Git repository of your own, together with the encrypted secrets.
-A complete example: [`devboxen.example.toml`](../devboxen.example.toml).
+`devboxen init` writes it, and `devboxen host add` adds hosts to it; you can also write it
+yourself. Keep the file in a private Git repository of your own, together with the
+encrypted secrets. A complete example: [`devboxen.example.toml`](../devboxen.example.toml).
 
 ## Top level
 
@@ -25,7 +26,7 @@ characters, lowercase letters, digits and `-`.
 | `ssh` | `root@<address>`. devboxen uses your normal SSH setup (keys, agent, `~/.ssh/config`), but never forwards the agent. |
 | `public_ipv4` | The host's public IPv4 address, if `ssh` uses a DNS name. The firewall needs the address. |
 | `hardening` | `false` turns off the optional hardening (key-only SSH, journal size cap, kernel mitigations). Default: on. |
-| `aws` | Makes this an on-demand AWS host: `{ profile, region, instance, sso_session, data_volume }`. `profile` is an AWS CLI profile; `sso_session` is used to log in again when the login has expired; `data_volume` is the EBS volume for the boxes' data. All of these come from the outputs of [`tofu/aws-host`](../tofu/aws-host/). |
+| `aws` | Makes this an on-demand AWS host: `{ profile, region, instance, sso_session, data_volume }`. `profile` is an AWS CLI profile; `sso_session` is used to log in again when the login has expired; `data_volume` is the EBS volume for the boxes' data. All of these come from the outputs of [`tofu/aws-host`](../tofu/aws-host/); `devboxen host add` fills them in ([aws.md](aws.md)). |
 
 ## `[web]`
 

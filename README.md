@@ -7,8 +7,8 @@ without access to your laptop, your SSH keys or your other projects. You use the
 terminal or from any browser, also on your phone, and everything keeps running when you
 disconnect.
 
-**Status:** early. Everything described here is in daily use. The `devboxen` command line
-tool sets it all up; a guided first-time setup is still to come.
+**Status:** early. Everything described here is in daily use; `devboxen init`, the guided
+setup, is new.
 
 ## Is it for you?
 
@@ -50,38 +50,38 @@ organization. Use [Coder](https://github.com/coder/coder) for that.
 | [`ansible/`](ansible/) | Server setup and deployment |
 | [`tofu/aws-host/`](tofu/aws-host/) | OpenTofu module for an on-demand AWS server |
 | [`cmd/devboxen/`](cmd/devboxen/) | The `devboxen` command line tool |
-| [`docs/`](docs/) | [Settings](docs/config.md), [boxes](docs/box.md), [browser interface](docs/web.md), [security](docs/security.md) |
+| [`docs/`](docs/) | [Settings](docs/config.md), [boxes](docs/box.md), [browser interface](docs/web.md), [AWS hosts](docs/aws.md), [security](docs/security.md) |
 
 ## Getting started
 
 You need:
 
-- a server with Ubuntu 24.04 (x86_64) that you can reach as root with your SSH key;
+- a server with Ubuntu 24.04 (x86_64) that you can log in to as root with your SSH key;
 - a domain name that points to it, for the browser interface;
 - on your computer: Go, `ssh` and Ansible.
 
 ```bash
 go install github.com/dx-tooling/devboxen/cmd/devboxen@latest
-
 mkdir my-devboxen && cd my-devboxen && git init      # a private repository for your setup
-curl -fsSLo devboxen.toml https://raw.githubusercontent.com/dx-tooling/devboxen/main/devboxen.example.toml
-$EDITOR devboxen.toml                                 # your server and domain
-printf 'secrets/identity.txt\n' > .gitignore
-
-devboxen secrets keygen        # the key pair for your encrypted secrets
-devboxen web passwd            # the password for the browser interface
-devboxen github edit           # optional: GitHub tokens for the boxes
-devboxen deploy                # sets up the server (takes a few minutes)
-devboxen host setup            # creates the first box, "main"
-devboxen login                 # optional: one Claude Code login for all boxes
-devboxen shell                 # a shell in it (or: devboxen claude)
+devboxen init
 ```
 
-Then open `https://<your domain>`. Commit everything except `secrets/identity.txt`, and keep
-that file safe: without it, the secrets cannot be decrypted.
+`devboxen init` asks for the server and the domain, makes a key pair for your secrets and
+the password for the browser interface, sets the server up (about 10 minutes) and creates
+the first box. If it stops halfway, run it again: it continues where it stopped. Then:
 
-`devboxen help` lists all commands. The settings are described in
-[docs/config.md](docs/config.md).
+```bash
+devboxen shell                 # a shell in the box (or: devboxen claude)
+devboxen tui                   # everything as a menu
+```
+
+The browser interface is at `https://<your domain>`. Commit the directory, except
+`secrets/identity.txt`, and keep a copy of that file somewhere safe: without it, the secrets
+cannot be decrypted.
+
+More hosts, a server you have or a new AWS instance that runs only when you need it:
+`devboxen host add` ([docs/aws.md](docs/aws.md) for AWS). `devboxen help` lists all
+commands; the settings are described in [docs/config.md](docs/config.md).
 
 ## License
 

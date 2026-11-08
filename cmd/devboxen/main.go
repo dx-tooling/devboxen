@@ -15,6 +15,10 @@ var version = "dev"
 
 const usage = `devboxen: development boxes on your own servers.
 
+Start:
+  devboxen init [dir]                     set up devboxen step by step (a new devboxen.toml)
+  devboxen host add [name]                add a server you have, or a new AWS host
+
 Boxes:
   devboxen shell [box[@host]] [session]   open a shell in a box (tmux session, default "shell")
   devboxen claude [box[@host]] [name]     Claude Code in a box (session "claude" or "claude-<name>")
@@ -72,6 +76,9 @@ func run(args []string) error {
 		fmt.Println("devboxen " + version)
 		return nil
 	}
+	if cmd == "init" { // before there is a config
+		return cmdInit(args)
+	}
 
 	path, err := config.Find()
 	if err != nil {
@@ -81,10 +88,7 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	a := &app{cfg: cfg,
-		remoteDevbox: envOr("DEVBOXEN_REMOTE_DEVBOX", "devbox"),
-		remoteAdmin:  envOr("DEVBOXEN_REMOTE_ADMIN", "devbox-admin"),
-	}
+	a := newApp(cfg)
 
 	switch cmd {
 	case "shell":
@@ -119,6 +123,13 @@ func run(args []string) error {
 		return a.cmdTUI(args)
 	}
 	return fmt.Errorf("unknown command %q (devboxen help)", cmd)
+}
+
+func newApp(cfg *config.Config) *app {
+	return &app{cfg: cfg,
+		remoteDevbox: envOr("DEVBOXEN_REMOTE_DEVBOX", "devbox"),
+		remoteAdmin:  envOr("DEVBOXEN_REMOTE_ADMIN", "devbox-admin"),
+	}
 }
 
 type app struct {

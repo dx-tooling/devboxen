@@ -33,9 +33,9 @@ func (a *app) cmdSecrets(args []string) error {
 	if err := k.Generate(); err != nil {
 		return err
 	}
-	say("made the age key pair: %s (private: keep it safe, never commit it)", k.Identity)
+	say("made the age key pair: %s (private: keep it safe, never commit it)", shortPath(k.Identity))
 	if k.Recipients != "" {
-		say("public key: %s (commit it)", k.Recipients)
+		say("public key: %s (commit it)", shortPath(k.Recipients))
 	}
 	return nil
 }
@@ -135,7 +135,7 @@ func (a *app) githubEdit() error {
 	if err := a.keys().Encrypt(edited, path); err != nil {
 		return err
 	}
-	say("saved %s; send it to the hosts: devboxen github push", path)
+	say("saved %s; send it to the hosts: devboxen github push", shortPath(path))
 	return nil
 }
 
@@ -178,6 +178,6 @@ func (a *app) cmdWeb(args []string) error {
 	if err := a.keys().Encrypt([]byte(user+":"+string(hash)+"\n"), path); err != nil {
 		return err
 	}
-	say("saved %s; it takes effect with: devboxen deploy %s", path, a.cfg.Web.Front)
+	say("saved %s; it takes effect with: devboxen deploy %s", shortPath(path), a.cfg.Web.Front)
 	return nil
 }

@@ -17,7 +17,7 @@ devboxen runs boxes on one or more hosts, each an Ubuntu 24.04 machine (x86_64) 
 over SSH as root:
 
 - **A VPS** that is always on: boxes are there whenever you are.
-- **An on-demand cloud host** ([`tofu/aws-host`](../tofu/aws-host/)): an EC2 instance that
+- **An on-demand cloud host** ([`tofu/aws-host`](../tofu/aws-host/), [aws.md](aws.md)): an EC2 instance that
   runs only while you use it. A stopped instance costs only its disks and IP; the CLI starts
   it when you connect, and a schedule stops it every night in any case. Everything the boxes
   keep lives on a separate EBS data volume (snapshotted daily, see

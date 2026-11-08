@@ -177,9 +177,12 @@ func (a *app) onDemandHost(args []string) (*config.Host, error) {
 
 func (a *app) cmdHost(args []string) error {
 	if len(args) == 0 {
-		return errors.New("devboxen host status|start|stop|setup [host]")
+		return errors.New("devboxen host status|start|stop|setup|add [host]")
 	}
 	action, args := args[0], args[1:]
+	if action == "add" {
+		return a.cmdHostAdd(args)
+	}
 	if action == "setup" {
 		h, err := a.hostArg(args)
 		if err != nil {
@@ -227,5 +230,5 @@ func (a *app) cmdHost(args []string) error {
 		say("the host %s is stopping; while stopped, only its disks and address cost money", h.Name)
 		return nil
 	}
-	return fmt.Errorf("unknown: devboxen host %s (status, start, stop, setup)", action)
+	return fmt.Errorf("unknown: devboxen host %s (status, start, stop, setup, add)", action)
 }
