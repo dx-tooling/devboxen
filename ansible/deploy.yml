@@ -62,9 +62,10 @@
 
     # Signs the login cookies: made once; deleting it logs every browser out.
     - name: The front's session key (made once)
-      ansible.builtin.shell: umask 077 && head -c 32 /dev/urandom > session-key.new && mv session-key.new session-key
+      ansible.builtin.shell: >-
+        umask 077 && head -c 32 /dev/urandom > {{ root }}/web/session-key.new &&
+        mv {{ root }}/web/session-key.new {{ root }}/web/session-key
       args:
-        chdir: "{{ root }}/web"
         creates: "{{ root }}/web/session-key"
       when: is_front
 
@@ -107,7 +108,8 @@
         chdir: "{{ root }}/web"
       register: web_up
       changed_when: "'Recreated' in web_up.stderr or 'Started' in web_up.stderr or 'Created' in web_up.stderr"
+      when: not ansible_check_mode
 
     - name: The boxes, recreated with the current image (their sessions end)
       ansible.builtin.command: devbox-admin rebuild
-      when: devboxen_rebuild_boxes | default(false) | bool
+      when: devboxen_rebuild_boxes | default(false) | bool and not ansible_check_mode
