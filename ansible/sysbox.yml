@@ -1,0 +1,86 @@
+---
+# Sysbox on the devboxen hosts: the container runtime the boxes run on (../box/). Sysbox
+# lets an unprivileged container run its own
+# Docker daemon: root inside is mapped to an unprivileged user range on the host, no
+# --privileged, no host Docker socket.
+#
+#   ansible-playbook -i <inventory> sysbox.yml --check --diff
+#
+# Zero downtime by construction: the Sysbox installer only SIGHUPs dockerd to register the
+# runtime (runtimes are hot-reloadable), and never restarts Docker while containers exist.
+# /etc/docker/daemon.json is installed FIRST so the installer finds everything it would
+# otherwise add itself (see ../host/docker/daemon.json and docs/box.md for why
+# bip/default-address-pools are pinned to Docker's defaults).
+- name: Sysbox container runtime (for the boxes)
+  hosts: devboxen_hosts
+  gather_facts: false
+  become: false # already root
+
+  vars:
+    host_files: "{{ playbook_dir }}/../host"
+    sysbox_version: "0.7.1"
+    sysbox_deb: "sysbox-ce_{{ sysbox_version }}.linux_amd64.deb"
+    # Published in the release notes of https://github.com/nestybox/sysbox/releases/tag/v0.7.1
+    sysbox_sha256: "9d6d5484f980d0a17f86c492c1262015c2afb66280bdb97215b79fde6a0261c5"
+
+  handlers:
+    - name: reload docker
+      # SIGHUP: picks up `runtimes` without touching running containers. bip and
+      # default-address-pools are only read at a restart; they equal Docker's built-in
+      # defaults, so a later restart changes nothing.
+      ansible.builtin.systemd_service:
+        name: docker
+        state: reloaded
+
+  tasks:
+    - name: Docker daemon config (validated with dockerd --validate)
+      ansible.builtin.copy:
+        src: "{{ host_files }}/docker/daemon.json"
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+        mode: "0644"
+        validate: "dockerd --validate --config-file %s"
+      notify: reload docker
+
+    - name: Docker has read its config before Sysbox is installed
+      ansible.builtin.meta: flush_handlers
+
+    - name: Sysbox package is downloaded (checksum-verified)
+      ansible.builtin.get_url:
+        url: "https://github.com/nestybox/sysbox/releases/download/v{{ sysbox_version }}/{{ sysbox_deb }}"
+        dest: "/var/cache/apt/archives/{{ sysbox_deb }}"
+        checksum: "sha256:{{ sysbox_sha256 }}"
+        mode: "0644"
+
+    # In a dry run on a fresh host the package was not downloaded, so there is nothing to
+    # compare against; the install then only runs for real.
+    - name: Check for the downloaded Sysbox package
+      ansible.builtin.stat:
+        path: "/var/cache/apt/archives/{{ sysbox_deb }}"
+      register: sysbox_deb_file
+      check_mode: false
+
+    - name: Sysbox is installed
+      ansible.builtin.apt:
+        deb: "/var/cache/apt/archives/{{ sysbox_deb }}"
+        state: present
+      when: sysbox_deb_file.stat.exists or not ansible_check_mode
+
+    - name: Sysbox services are enabled and running
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - sysbox-mgr
+        - sysbox-fs
+        - sysbox
+      when: sysbox_deb_file.stat.exists or not ansible_check_mode
+
+    - name: Docker knows the sysbox-runc runtime
+      ansible.builtin.command: docker info --format '{{ "{{" }}json .Runtimes{{ "}}" }}'
+      register: docker_runtimes
+      changed_when: false
+      check_mode: false
+      failed_when: "'sysbox-runc' not in docker_runtimes.stdout and not ansible_check_mode"

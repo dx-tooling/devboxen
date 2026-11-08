@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+#
+# devbox — enter a devbox as `dev`.
+# Installed to /usr/local/bin/devbox by ansible/host.yml; boxes are managed with
+# devbox-admin. See docs/box.md.
+#
+#   devbox                           # login shell (tmux session "shell") in the default box
+#   devbox -b client2                # … in the box "client2"
+#   devbox -b client2 -s work        # the tmux session "work" there (attach or create)
+#   devbox [-b BOX] [-s NAME] claude # any command, e.g. Claude Code (session named after it)
+#
+# Default box: "main" if it exists, else the only box; with several and no "main", -b is
+# required.
+#
+# Persistent: on a terminal, the command runs in a tmux session inside the box, named after
+# it unless -s names it. If the connection drops, the session keeps running; the same
+# `devbox …` reattaches it (taking it over from any other client, e.g. a dead connection's).
+# Different names = independent sessions side by side. Without a terminal (scripts), the
+# command runs directly. The tmux status line names host, box and session ([aws:main:shell]),
+# the host as in /etc/devbox-host (written by ansible/host.yml).
+#
+# No SSH agent goes into a box: GitHub is reached over HTTPS with the boxes' tokens
+# (docs/box.md, "GitHub").
+set -euo pipefail
+
+die() { echo "devbox: $*" >&2; exit 1; }
+
+boxes() { docker ps -a --filter label=devbox.name --format '{{.Label "devbox.name"}}' | sort; }
+
+box="" session=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -b) [ -n "${2:-}" ] || die "-b needs a box name"; box="$2"; shift 2 ;;
+    -s) [ -n "${2:-}" ] || die "-s needs a session name"; session="$2"; shift 2 ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
+[[ "$session" =~ ^[A-Za-z0-9_-]*$ ]] || die "session names may only use letters, digits, _ and -"
+
+if [ -z "$box" ]; then
+  all="$(boxes)"
+  if grep -qx main <<<"$all"; then
+    box=main
+  elif [ -n "$all" ] && [ "$(grep -c . <<<"$all")" -eq 1 ]; then
+    box="$all"
+  elif [ -z "$all" ]; then
+    die "there is no devbox yet; create one: devbox-admin create main"
+  else
+    die "several devboxes and none called main; pick one with -b: $(tr '\n' ' ' <<<"$all")"
+  fi
+fi
+[[ "$box" =~ ^[a-z0-9][a-z0-9-]{0,10}$ ]] || die "no such devbox: $box"
+container="devbox-$box"
+[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" = true ] ||
+  die "the devbox $box is not running (devbox-admin list)"
+
+[ $# -gt 0 ] || set -- bash -l
+
+interactive=false
+[ -t 0 ] && [ -t 1 ] && interactive=true
+tty_flags=(-i)
+$interactive && tty_flags=(-it)
+env_flags=()
+if $interactive; then
+  env_flags+=(-e "TERM=${TERM:-xterm-256color}" -e "COLORTERM=${COLORTERM:-truecolor}")
+fi
+
+if $interactive; then
+  # Attach the session of that name, or create it running the command. -D detaches other
+  # clients (e.g. a dead connection's) so the window takes this terminal's size.
+  name="$session"
+  if [ -z "$name" ]; then
+    name="$(basename -- "$1")"
+    [ "$*" = "bash -l" ] && name=shell
+  fi
+  host_name="$(cat /etc/devbox-host 2>/dev/null || hostname -s)"
+  set -- tmux new-session -A -D -s "${name//[.:]/_}" "$@" \
+    \; set-option -g status-left "[$host_name:$box:#S] " \
+    \; set-option -g status-left-length 50
+fi
+
+exec docker exec "${tty_flags[@]}" -u dev -w /home/dev "${env_flags[@]}" "$container" "$@"

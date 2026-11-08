@@ -1,0 +1,10 @@
+{
+    "bip": "172.17.0.1/16",
+    "default-address-pools": [
+        { "base": "172.16.0.0/12", "size": 16 },
+        { "base": "192.168.0.0/16", "size": 20 }
+    ],
+    "runtimes": {
+        "sysbox-runc": { "path": "/usr/bin/sysbox-runc" }
+    }
+}

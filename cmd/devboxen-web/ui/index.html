@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+  <title>devboxen</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="#/" title="All boxes">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="2"/><path d="M4.5 6.5 6.5 8l-2 1.5M8 10h3.5"/></svg>
+      <span>devboxen</span>
+    </a>
+    <div class="picker" id="picker" hidden>
+      <button type="button" id="picker-button" aria-haspopup="true" aria-expanded="false"></button>
+      <div class="menu" id="picker-menu" role="menu" hidden></div>
+    </div>
+    <nav class="sessions" id="sessions" aria-label="tmux sessions" hidden></nav>
+    <div class="actions" id="actions" hidden>
+      <button type="button" class="new-toggle" id="new-toggle" aria-expanded="false" aria-controls="new-form" title="New session">+</button>
+      <form class="new" id="new-form" autocomplete="off">
+        <input id="new-name" name="name" placeholder="name…" maxlength="32" spellcheck="false" aria-label="Name of a new session">
+        <button type="submit" title="New shell session (name optional)">+ shell</button>
+        <button type="button" id="new-claude" title="New Claude Code session: claude, or claude-&lt;name&gt;">+ claude</button>
+      </form>
+      <div class="layout" role="group" aria-label="Layout">
+        <button type="button" data-layout="code" title="Only the left pane (VS Code, browser, Claude's screen)">left</button>
+        <button type="button" data-layout="split" title="Side by side">split</button>
+        <button type="button" data-layout="term" title="Only the terminal">term</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="overview" class="overview">
+    <p class="loading">Looking for boxes…</p>
+  </main>
+
+  <main id="workspace" class="workspace" hidden>
+    <section class="pane" id="pane-code">
+      <div class="tabs" role="tablist" aria-label="Left pane">
+        <button type="button" role="tab" data-left="code" title="VS Code on /home/dev">VS Code</button>
+        <button type="button" role="tab" data-left="screen" title="A Chrome in the box: localhost is the box's">Browser</button>
+        <button type="button" role="tab" data-left="watch" title="The box's screen :99, where Claude's browser runs">Claude's screen</button>
+        <span class="tab-state" id="vnc-state"></span>
+        <button type="button" class="control" id="watch-control" hidden title="Watching only, or mouse and keyboard on Claude's screen">watching</button>
+      </div>
+      <div class="stack">
+        <iframe id="code" title="VS Code" allow="clipboard-read; clipboard-write"></iframe>
+        <div class="vnc" id="screen" hidden></div>
+        <div class="vnc" id="watch" hidden></div>
+      </div>
+    </section>
+    <div class="divider" id="divider" role="separator" aria-orientation="vertical" tabindex="0"></div>
+    <section class="pane" id="pane-term">
+      <iframe id="term" title="Terminal" allow="clipboard-read; clipboard-write"></iframe>
+      <button type="button" class="reconnect" id="reconnect" hidden><span>Disconnected · tap to reconnect</span></button>
+      <div class="keys" id="keys" role="toolbar" aria-label="Keys the keyboard lacks" hidden></div>
+    </section>
+  </main>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

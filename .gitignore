@@ -1,0 +1,10 @@
+.DS_Store
+# go build output
+/devboxen
+/devboxen-web
+# never commit these
+*.htpasswd
+htpasswd
+session-key
+.terraform/
+*.tfstate*

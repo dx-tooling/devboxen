@@ -1,0 +1,11 @@
+# devboxen-web with automatic HTTPS (TLS mode "auto", docs/web.md): Caddy gets a Let's
+# Encrypt certificate for the domain (ports 80 and 443 of this host must be reachable, and
+# the domain must point here) and passes everything to the front. WebSockets and long
+# streams (terminals, VS Code) pass through as they are.
+{$DEVBOXEN_WEB_DOMAIN} {
+	reverse_proxy devboxen-web:8080 {
+		# The browser's address, for the front's failed-login throttling.
+		header_up X-Real-Ip {remote_host}
+		flush_interval -1
+	}
+}

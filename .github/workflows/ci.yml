@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
+  web-image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f web/Dockerfile -t devboxen-web:ci .
+      - run: DEVBOXEN_WEB_DOMAIN=ci.example docker compose -f web/compose.yaml --profile front --profile auto config -q
+
+  ansible:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install ansible-core
+      - run: ansible-galaxy collection install -r ansible/requirements.yml
+      - run: ansible-playbook -i ansible/inventory.example.ini --syntax-check ansible/site.yml
+
+  tofu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+      - run: tofu fmt -check -recursive tofu/
+      - run: cd tofu/aws-host && tofu init -backend=false -input=false && tofu validate
+
+  shell:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n box/*.sh host/bin/devbox host/bin/devbox-admin box/tests/*.sh box/seccomp/generate.sh
+      - run: node --check box/web-api.js && node --check box/web-vnc.js && node --check cmd/devboxen-web/ui/app.js

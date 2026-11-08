@@ -1,0 +1,212 @@
+---
+# The devboxes' host side: the host firewall (boxes never reach an sshd of a devboxen host),
+# the `devbox` and `devbox-admin` commands, the state directories, the host's name and
+# settings, and (unless devboxen_hardening is false) a little hardening: key-only SSH, a
+# capped journal, and the CVE-2026-98432 mitigations (docs/security.md).
+#
+#   ansible-playbook -i <inventory> host.yml --check --diff
+#
+# Variables (inventory):
+#   devboxen_host_name     the host's name as the CLI addresses it (box@<name>); required
+#   devboxen_public_ipv4   its public IPv4 address; default: ansible_host
+#   devboxen_box_image     the box image (a published one is pulled; default: built on the host)
+#   devboxen_hardening     true (default) or false
+- name: The devboxes' host side
+  hosts: devboxen_hosts
+  gather_facts: false
+  become: false # devboxen connects as root
+
+  vars:
+    host_files: "{{ playbook_dir }}/../host"
+    hardening: "{{ devboxen_hardening | default(true) | bool }}"
+    # Every devboxen host's public address: no box may reach any of their sshds.
+    # "a.b.c.d,e.f.g.h,": IPv4 addresses only (a host reached by name needs devboxen_public_ipv4).
+    host_addresses: >-
+      {%- for h in groups['devboxen_hosts'] -%}
+      {%-   set a = hostvars[h]['devboxen_public_ipv4'] | default(hostvars[h]['ansible_host']) -%}
+      {%-   if a is match('^[0-9]+([.][0-9]+){3}$') -%}{{ a }},{%- endif -%}
+      {%- endfor -%}
+
+  handlers:
+    - name: reload host firewall
+      ansible.builtin.systemd:
+        name: host-firewall
+        state: restarted
+        enabled: true
+        daemon_reload: true
+    - name: apply sysctl drop-in
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/60-cve-2026-98432-no-mptcp.conf
+    - name: update grub
+      # The new kernel command line applies at the next boot.
+      ansible.builtin.command: update-grub
+    - name: restart journald
+      ansible.builtin.systemd:
+        name: systemd-journald
+        state: restarted
+    - name: reload sshd
+      # sshd -t checks the whole config; on failure the running daemon keeps its old one.
+      ansible.builtin.shell: sshd -t && systemctl reload ssh
+
+  tasks:
+    - name: The host has a devboxen name
+      ansible.builtin.assert:
+        that:
+          - devboxen_host_name is defined
+          - devboxen_host_name is match('^[a-z0-9][a-z0-9-]{0,10}$')
+        fail_msg: "set devboxen_host_name (1-11 characters: a-z, 0-9, -) for {{ inventory_hostname }}"
+        quiet: true
+
+    # --- the host firewall -------------------------------------------------------------
+    # Its own nftables tables, loaded by its own unit (see the files' headers for why not
+    # the stock nftables.service).
+    - name: Host firewall ruleset (validated with nft -c)
+      ansible.builtin.copy:
+        src: "{{ host_files }}/firewall/host-firewall.nft"
+        dest: /etc/host-firewall.nft
+        owner: root
+        group: root
+        mode: "0644"
+        validate: "nft -c -f %s"
+      notify: reload host firewall
+
+    - name: The devboxen hosts' addresses for the firewall
+      ansible.builtin.copy:
+        dest: /etc/host-firewall-hosts.nft
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Written by devboxen (ansible/host.yml): the public addresses of all devboxen hosts,
+          # whose sshd no box may reach (host-firewall.nft, set devboxen_hosts).
+          {% set addrs = host_addresses.split(',') | select | list %}
+          {% if addrs %}
+          add element inet host_firewall devboxen_hosts { {{ addrs | join(', ') }} }
+          {% endif %}
+      notify: reload host firewall
+
+    - name: Host firewall systemd unit
+      ansible.builtin.copy:
+        src: "{{ host_files }}/firewall/host-firewall.service"
+        dest: /etc/systemd/system/host-firewall.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: reload host firewall
+
+    - name: Host firewall is enabled and active
+      ansible.builtin.systemd:
+        name: host-firewall
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    # --- hardening (devboxen_hardening) --------------------------------------------------
+    - name: Key-only SSH (no passwords; root only with a key)
+      ansible.builtin.copy:
+        src: "{{ host_files }}/hardening/ssh/00-hardening.conf"
+        dest: /etc/ssh/sshd_config.d/00-hardening.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: reload sshd
+      when: hardening
+
+    - name: No Multipath TCP in the host's network namespace (CVE-2026-98432)
+      ansible.builtin.copy:
+        src: "{{ host_files }}/hardening/sysctl/60-cve-2026-98432-no-mptcp.conf"
+        dest: /etc/sysctl.d/60-cve-2026-98432-no-mptcp.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: apply sysctl drop-in
+      when: hardening
+
+    - name: GRUB drop-in directory exists
+      ansible.builtin.file:
+        path: /etc/default/grub.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: hardening
+
+    - name: Kernel zeroes freed memory (init_on_free=1, from the next boot; CVE-2026-98432)
+      ansible.builtin.copy:
+        src: "{{ host_files }}/hardening/grub/60-cve-2026-98432-init-on-free.cfg"
+        dest: /etc/default/grub.d/60-cve-2026-98432-init-on-free.cfg
+        owner: root
+        group: root
+        mode: "0644"
+      notify: update grub
+      when: hardening
+
+    - name: journald drop-in directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: hardening
+
+    - name: The journal is capped (a full disk stops the boxes too)
+      ansible.builtin.copy:
+        src: "{{ host_files }}/hardening/journald/60-size-cap.conf"
+        dest: /etc/systemd/journald.conf.d/60-size-cap.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: restart journald
+      when: hardening
+
+    # --- the devboxes ----------------------------------------------------------------------
+    # State in /var/lib/devbox (box settings, the shared tokens, devboxen-web's sockets);
+    # the boxes themselves are runtime state. The install (box/, host/, web/) in /opt/devboxen.
+    - name: The devbox state and install directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - /var/lib/devbox
+        - /var/lib/devbox/boxes
+        - /var/lib/devbox/shared
+        - /var/lib/devbox/web
+        - /var/lib/devbox/web/boxes
+        - /var/lib/devbox/web/hosts
+        - /opt/devboxen
+        - /etc/devboxen
+
+    # Shown by `devbox` in the tmux status line: [host:box:session].
+    - name: The host's devboxen name
+      ansible.builtin.copy:
+        content: "{{ devboxen_host_name }}\n"
+        dest: /etc/devbox-host
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: The host's devboxen settings (read by devbox-admin)
+      ansible.builtin.copy:
+        dest: /etc/devboxen/host.env
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Written by devboxen (ansible/host.yml).
+          {% if devboxen_box_image is defined %}
+          DEVBOXEN_BOX_IMAGE={{ devboxen_box_image }}
+          {% endif %}
+
+    - name: The devbox and devbox-admin commands
+      ansible.builtin.copy:
+        src: "{{ host_files }}/bin/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - devbox
+        - devbox-admin

@@ -1,0 +1,11 @@
+{
+    "bip": "10.199.0.1/24",
+    "default-address-pools": [
+        { "base": "10.200.0.0/16", "size": 24 }
+    ],
+    "log-driver": "local",
+    "log-opts": { "max-size": "20m", "max-file": "3" },
+    "builder": {
+        "gc": { "enabled": true, "defaultKeepStorage": "20GB" }
+    }
+}

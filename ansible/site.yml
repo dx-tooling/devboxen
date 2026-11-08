@@ -1,0 +1,11 @@
+---
+# A devboxen host from scratch, or brought up to date: every play, in order. The data
+# volume first (where there is one), so Docker never writes to the root volume.
+#
+#   ansible-playbook -i <inventory> site.yml -e devboxen_web_htpasswd_file=<file>
+- import_playbook: data-volume.yml
+- import_playbook: base.yml
+- import_playbook: sysbox.yml
+- import_playbook: host.yml
+- import_playbook: web.yml
+- import_playbook: deploy.yml

@@ -1,0 +1,66 @@
+# A devbox — an isolated development environment with its own Docker daemon, run with the
+# Sysbox runtime (installed by ansible/sysbox.yml). See docs/box.md.
+#
+# One compose project per box: `devbox-<name>`, driven by the host's `devbox-admin`
+# (host/bin/devbox-admin) with the box's env file /var/lib/devbox/boxes/<name>.env
+# (DEVBOX_NAME, DEVBOX_MEM, DEVBOX_CPUS). Boxes share the image ($DEVBOXEN_BOX_IMAGE: a
+# published one, or devboxen-box:local built on the host), the Claude Code login token and
+# the GitHub tokens, nothing else: each has its own volumes and network.
+#
+# Not public: no box joins another network or publishes ports, and none can reach the
+# host's sshd. Reach dev servers inside through an SSH tunnel (docs/box.md). Enter a box
+# with the host's `devbox` command, or in the browser (devboxen-web, through Unix sockets
+# only).
+name: devbox-${DEVBOX_NAME:?set DEVBOX_NAME (use devbox-admin)}
+
+services:
+  devbox:
+    build:
+      context: .
+      additional_contexts:
+        host: ../host # the host firewall ruleset, reused inside the devbox
+    image: ${DEVBOXEN_BOX_IMAGE:-devboxen-box:local}
+    container_name: devbox-${DEVBOX_NAME}
+    hostname: ${DEVBOX_NAME}
+    labels:
+      devbox.name: ${DEVBOX_NAME}
+    runtime: sysbox-runc
+    init: true
+    restart: unless-stopped
+    # Docker's default profile minus MPTCP sockets (CVE-2026-98432); inherited by every
+    # process in the devbox, nested containers included. Built by seccomp/generate.sh.
+    security_opt:
+      - seccomp=./seccomp.json
+    # Per box (devbox-admin create --mem/--cpus). CPU limits may add up past the host's
+    # cores; memory limits that add up past the host's free memory risk the OOM killer
+    # picking something else on the host when the boxes are busy.
+    cpus: ${DEVBOX_CPUS:-6}
+    mem_limit: ${DEVBOX_MEM:-8g}
+    pids_limit: 16384
+    shm_size: 2g # Chrome (also in nested containers' own /dev/shm, which they size themselves)
+    volumes:
+      - home:/home/dev # checkouts, Claude Code settings + history, gh login
+      - docker:/var/lib/docker # the inner Docker's images, volumes, build cache
+      # Shared by all boxes, read-only: the Claude Code login token (devbox-admin token) and
+      # the GitHub tokens (devbox-admin github).
+      - /var/lib/devbox/shared:/run/devbox-shared:ro
+      # The box in the browser (devbox-web): code-server, ttyd and the session API put their
+      # sockets here; the host's devbox-web reaches them, nothing else. devbox-admin creates
+      # the directory (owned by UID 1000) before the box starts.
+      - /var/lib/devbox/web/boxes/${DEVBOX_NAME}:/run/devbox-web
+      # The host's devboxen name, for the browser terminal's tmux status line.
+      - /etc/devbox-host:/etc/devbox-host:ro
+    networks:
+      - devbox
+
+volumes:
+  home:
+  docker:
+
+networks:
+  devbox:
+    driver_opts:
+      # Fixed bridge name dbx-<name> (Linux allows 15 characters, hence box names of at
+      # most 11): the host firewall keeps every dbx-* away from the host's sshd
+      # (host/firewall/host-firewall.nft, chain devbox_no_host_ssh).
+      com.docker.network.bridge.name: dbx-${DEVBOX_NAME}

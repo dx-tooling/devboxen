@@ -1,0 +1,21 @@
+# Loads /etc/host-firewall.nft (host/firewall/host-firewall.nft) and the devboxen hosts'
+# addresses (/etc/host-firewall-hosts.nft, written by ansible/host.yml).
+# Deliberately not the stock nftables.service: its /etc/nftables.conf starts with
+# `flush ruleset`, which would wipe Docker's rules whenever it is (re)started.
+[Unit]
+Description=Host firewall (nftables tables inet + bridge host_firewall)
+Wants=network-pre.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/host-firewall.nft
+ExecStart=-/usr/sbin/nft -f /etc/host-firewall-hosts.nft
+ExecReload=/usr/sbin/nft -f /etc/host-firewall.nft
+ExecReload=-/usr/sbin/nft -f /etc/host-firewall-hosts.nft
+ExecStop=/usr/sbin/nft delete table inet host_firewall
+ExecStop=-/usr/sbin/nft delete table bridge host_firewall
+
+[Install]
+WantedBy=multi-user.target

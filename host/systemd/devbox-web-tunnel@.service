@@ -1,0 +1,33 @@
+# devboxen-web's tunnel from the front host to another devboxen host's backend
+# (127.0.0.1:7700 there), as the Unix socket /var/lib/devbox/web/hosts/<host>.sock here,
+# which the front's container reads. Instance = the other host's devboxen name; its address
+# is in /etc/devbox-web/tunnel-<host>.env. Installed by ansible/web.yml; see docs/web.md.
+#
+# While that host is stopped (an on-demand cloud host: most of the time), ssh fails and is
+# retried, backing off to once a minute; the front shows the host as not reachable.
+[Unit]
+Description=devbox-web tunnel to the devbox host %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+EnvironmentFile=/etc/devbox-web/tunnel-%i.env
+ExecStartPre=/bin/rm -f /var/lib/devbox/web/hosts/%i.sock
+ExecStart=/usr/bin/ssh -N -T \
+  -i /etc/devbox-web/tunnel_ed25519 -o IdentitiesOnly=yes -o IdentityAgent=none \
+  -o UserKnownHostsFile=/etc/devbox-web/known_hosts -o StrictHostKeyChecking=yes \
+  -o BatchMode=yes -o ConnectTimeout=10 \
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+  -o ExitOnForwardFailure=yes \
+  -o StreamLocalBindUnlink=yes -o StreamLocalBindMask=0177 \
+  -L /var/lib/devbox/web/hosts/%i.sock:127.0.0.1:7700 \
+  devbox-web@${DEVBOX_WEB_TUNNEL_ADDR}
+ExecStopPost=/bin/rm -f /var/lib/devbox/web/hosts/%i.sock
+Restart=always
+RestartSec=5
+RestartSteps=5
+RestartMaxDelaySec=60
+
+[Install]
+WantedBy=multi-user.target

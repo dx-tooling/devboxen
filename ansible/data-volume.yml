@@ -1,0 +1,118 @@
+---
+# A separate data volume for a host's devboxen data (the AWS host of ../tofu/aws-host/ has
+# one; any host with a spare disk can): every host with devboxen_data_volume_id.
+#
+# Everything the devboxes keep lives on the separate EBS data volume, not on the root
+# volume: the boxes' Docker volumes (homes, inner Docker), the images, the box settings and
+# the shared Claude token. The instance can then be replaced (new root volume, same data
+# volume) and the boxes come back after the other plays have run.
+#
+#   /srv/devbox-data                  the volume (ext4, label devbox-data)
+#   /var/lib/docker      -> bind of   /srv/devbox-data/docker
+#   /var/lib/containerd  -> bind of   /srv/devbox-data/containerd
+#   /var/lib/devbox      -> bind of   /srv/devbox-data/devbox
+#
+# Bind mounts rather than Docker's data-root, so /etc/docker/daemon.json stays the same file
+# on every host. Docker and containerd only start once their directories are mounted.
+#
+# Runs BEFORE base.yml on a fresh host (site.yml does that), so Docker never writes to the
+# root volume first.
+#
+#   ansible-playbook -i <inventory> data-volume.yml --check --diff
+- name: The devboxen data volume
+  hosts: devboxen_hosts
+  gather_facts: false
+  become: false # already root
+
+  vars:
+    data_mount: /srv/devbox-data
+    # An EBS volume as the NVMe driver names it (volume ID without the dash); another disk
+    # with devboxen_data_device.
+    data_device: >-
+      {{ devboxen_data_device | default('/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_'
+         ~ (devboxen_data_volume_id | default('') | replace('-', ''))) }}
+    binds:
+      - { path: /var/lib/docker, src: docker, mode: "0710" }
+      - { path: /var/lib/containerd, src: containerd, mode: "0700" } # what containerd sets itself
+      - { path: /var/lib/devbox, src: devbox, mode: "0755" }
+
+  handlers:
+    - name: reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+  tasks:
+    - name: Only hosts with a data volume
+      ansible.builtin.meta: end_host
+      when: devboxen_data_volume_id is not defined and devboxen_data_device is not defined
+
+    - name: The data volume is attached
+      ansible.builtin.stat:
+        path: "{{ data_device }}"
+      register: data_dev
+      check_mode: false
+      failed_when: not data_dev.stat.exists
+
+    # Never on a volume that has a filesystem already (that is the boxes' data).
+    - name: The data volume has an ext4 filesystem
+      community.general.filesystem:
+        dev: "{{ data_device }}"
+        fstype: ext4
+        opts: -L devbox-data
+
+    - name: The data volume is mounted
+      ansible.posix.mount:
+        path: "{{ data_mount }}"
+        src: LABEL=devbox-data
+        fstype: ext4
+        opts: defaults,noatime,nofail
+        state: mounted
+
+    # Stop a first run from hiding data that is already on the root volume under a bind.
+    - name: Nothing is there yet that a bind mount would hide
+      ansible.builtin.shell: |
+        set -eu
+        for d in {{ binds | map(attribute='path') | join(' ') }}; do
+          if [ -d "$d" ] && ! mountpoint -q "$d" && [ -n "$(ls -A "$d")" ]; then
+            echo "$d has data on the root volume"; exit 1
+          fi
+        done
+      changed_when: false
+      check_mode: false
+
+    - name: The directories on the data volume
+      ansible.builtin.file:
+        path: "{{ data_mount }}/{{ item.src }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop: "{{ binds }}"
+
+    - name: The bind mounts
+      ansible.posix.mount:
+        path: "{{ item.path }}"
+        src: "{{ data_mount }}/{{ item.src }}"
+        fstype: none
+        opts: "bind,nofail,x-systemd.requires-mounts-for={{ data_mount }}"
+        state: mounted
+      loop: "{{ binds }}"
+
+    - name: Drop-in directories for Docker and containerd
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ item }}.service.d"
+        state: directory
+        mode: "0755"
+      loop: [docker, containerd]
+
+    - name: Docker and containerd start only with their data mounted
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item }}.service.d/10-devbox-data.conf"
+        mode: "0644"
+        content: |
+          # The devboxen data volume (ansible/data-volume.yml): never start on the root volume.
+          [Unit]
+          RequiresMountsFor=/var/lib/docker /var/lib/containerd /var/lib/devbox
+      loop: [docker, containerd]
+      notify: reload systemd
+

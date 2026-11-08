@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+#
+# devbox-admin — create, list, stop/start, rebuild and destroy devboxes, and set the Claude
+# Code login token and the GitHub tokens they share. Installed to /usr/local/bin/devbox-admin by
+# ansible/host.yml; the laptop's `devboxen` CLI calls it over SSH. See docs/box.md.
+#
+#   devbox-admin create NAME [--mem 8g] [--cpus 6]
+#   devbox-admin list [--names]
+#   devbox-admin stop NAME | start NAME
+#   devbox-admin rebuild [NAME…]                # pull or build the image, recreate the boxes (all by default)
+#   devbox-admin destroy NAME --confirm NAME    # deletes the box AND its volumes
+#   devbox-admin token set < token | token status | token clear
+#   devbox-admin github set < owner=token lines | github status | github clear
+#
+# A box is the compose project devbox-NAME from the box/ directory of the devboxen install
+# (/opt/devboxen/box, put there by `devboxen deploy`), with its settings in
+# /var/lib/devbox/boxes/NAME.env. Boxes are runtime state like containers.
+#
+# The image: $DEVBOXEN_BOX_IMAGE from /etc/devboxen/host.env, a published image (pulled), or
+# unset: devboxen-box:local, built on the host from box/.
+set -euo pipefail
+
+[ -r /etc/devboxen/host.env ] && . /etc/devboxen/host.env
+DEVBOX_DIR="${DEVBOX_DIR:-/opt/devboxen/box}"
+export DEVBOXEN_BOX_IMAGE="${DEVBOXEN_BOX_IMAGE:-devboxen-box:local}"
+STATE=/var/lib/devbox
+DEV_UID=1000
+TOKEN_FILE="$STATE/shared/claude-oauth-token"
+GITHUB_FILE="$STATE/shared/github-tokens"
+DEFAULT_MEM=8g
+DEFAULT_CPUS=6
+
+die() { echo "devbox-admin: $*" >&2; exit 1; }
+say() { echo "==> $*"; }
+
+valid_name() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,10}$ ]]; }
+need_name() {
+  [ -n "${1:-}" ] || die "a box name is needed"
+  valid_name "$1" || die "box names: 1-11 characters, lowercase letters, digits and -, starting with a letter or digit"
+}
+env_file() { echo "$STATE/boxes/$1.env"; }
+exists() { [ -f "$(env_file "$1")" ]; }
+need_box() { need_name "$1"; exists "$1" || die "no such devbox: $1 (devbox-admin list)"; }
+all_boxes() { ls "$STATE/boxes" 2>/dev/null | sed -n 's/\.env$//p' | sort; }
+
+compose() { # compose NAME args…
+  local name="$1"; shift
+  (cd "$DEVBOX_DIR" && docker compose --env-file "$(env_file "$name")" "$@")
+}
+
+ensure_dirs() {
+  install -d -m 0755 "$STATE" "$STATE/boxes" "$STATE/shared" \
+    "$STATE/web" "$STATE/web/boxes" "$STATE/web/hosts"
+}
+
+# The host directory a box mounts, owned by UID 1000 (`dev` inside): its devbox-web sockets
+# (VS Code, terminal, sessions, screens; see ../../cmd/devboxen-web/). Before every start: a missing one
+# would be created by Docker, owned by root.
+ensure_box_dirs() {
+  ensure_dirs
+  install -d -m 0755 -o "$DEV_UID" -g "$DEV_UID" "$STATE/web/boxes/$1"
+}
+
+# A published image (a registry path) is pulled; a local one is built from box/.
+build_image() {
+  if [[ "$DEVBOXEN_BOX_IMAGE" == */* ]]; then
+    say "pulling the devbox image $DEVBOXEN_BOX_IMAGE"
+    docker pull -q "$DEVBOXEN_BOX_IMAGE" >/dev/null
+  else
+    say "building the devbox image $DEVBOXEN_BOX_IMAGE"
+    (cd "$DEVBOX_DIR" && DEVBOX_NAME=build docker compose build --pull)
+  fi
+}
+
+cmd_create() {
+  local name="${1:-}"; shift || true
+  need_name "$name"
+  local mem="$DEFAULT_MEM" cpus="$DEFAULT_CPUS"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --mem) mem="${2:?--mem needs a value, e.g. 8g}"; shift 2 ;;
+      --cpus) cpus="${2:?--cpus needs a value, e.g. 4}"; shift 2 ;;
+      *) die "unknown option: $1" ;;
+    esac
+  done
+  [[ "$mem" =~ ^[0-9]+[mg]$ ]] || die "--mem like 4g or 6144m"
+  [[ "$cpus" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--cpus like 4 or 2.5"
+  exists "$name" && die "the devbox $name exists already"
+  docker container inspect "devbox-$name" >/dev/null 2>&1 && die "a container devbox-$name exists already"
+
+  ensure_box_dirs "$name"
+  printf 'DEVBOX_NAME=%s\nDEVBOX_MEM=%s\nDEVBOX_CPUS=%s\n' "$name" "$mem" "$cpus" >"$(env_file "$name")"
+  docker image inspect "$DEVBOXEN_BOX_IMAGE" >/dev/null 2>&1 || build_image
+
+  say "starting devbox $name (memory $mem, CPUs $cpus)"
+  compose "$name" up -d --no-build
+  for _ in $(seq 30); do
+    docker exec "devbox-$name" docker info >/dev/null 2>&1 && break
+    sleep 1
+  done
+  docker exec "devbox-$name" docker info >/dev/null 2>&1 || die "devbox $name started, but its Docker is not answering yet (docker logs devbox-$name)"
+  say "devbox $name is ready: devbox -b $name"
+}
+
+cmd_list() {
+  if [ "${1:-}" = --names ]; then all_boxes; return; fi
+  local name status sessions mem cpus
+  printf '%-12s %-9s %-6s %-5s %s\n' BOX STATUS MEMORY CPUS SESSIONS
+  for name in $(all_boxes); do
+    status="$(docker inspect -f '{{.State.Status}}' "devbox-$name" 2>/dev/null || echo missing)"
+    mem="$(sed -n 's/^DEVBOX_MEM=//p' "$(env_file "$name")")"
+    cpus="$(sed -n 's/^DEVBOX_CPUS=//p' "$(env_file "$name")")"
+    sessions="-"
+    if [ "$status" = running ]; then
+      sessions="$(docker exec -u dev "devbox-$name" tmux list-sessions \
+        -F '#S#{?session_attached,*,}' 2>/dev/null | tr '\n' ' ' || true)"
+      [ -n "$sessions" ] || sessions="-"
+    fi
+    printf '%-12s %-9s %-6s %-5s %s\n' "$name" "$status" "$mem" "$cpus" "$sessions"
+  done
+  echo "(* = a terminal is attached)"
+}
+
+cmd_stop() { need_box "${1:-}"; compose "$1" stop; }
+cmd_start() { need_box "${1:-}"; ensure_box_dirs "$1"; compose "$1" up -d --no-build; }
+
+cmd_rebuild() {
+  local names=("$@") name
+  [ ${#names[@]} -gt 0 ] || mapfile -t names < <(all_boxes)
+  for name in "${names[@]}"; do need_box "$name"; done
+  build_image
+  for name in "${names[@]}"; do
+    say "recreating devbox $name if its image or settings changed (its tmux sessions end; volumes stay)"
+    ensure_box_dirs "$name"
+    compose "$name" up -d --no-build
+  done
+}
+
+cmd_destroy() {
+  local name="${1:-}"
+  need_box "$name"
+  [ "${2:-}" = --confirm ] && [ "${3:-}" = "$name" ] ||
+    die "this deletes devbox $name with its volumes (checkouts, inner Docker data): repeat the name: devbox-admin destroy $name --confirm $name"
+  say "destroying devbox $name and its volumes"
+  compose "$name" down --volumes --remove-orphans
+  rm -f "$(env_file "$name")"
+  rm -rf "${STATE:?}/web/boxes/$name"
+  say "devbox $name is gone"
+}
+
+cmd_token() {
+  case "${1:-}" in
+    set)
+      ensure_dirs
+      local token
+      IFS= read -r token || true
+      token="$(printf '%s' "$token" | tr -d '[:space:]')"
+      [[ "$token" =~ ^sk-ant-[A-Za-z0-9_-]{20,}$ ]] || die "that does not look like a Claude Code token (sk-ant-…)"
+      (umask 077 && printf '%s\n' "$token" >"$TOKEN_FILE.new")
+      chown "$DEV_UID:$DEV_UID" "$TOKEN_FILE.new"
+      chmod 0400 "$TOKEN_FILE.new"
+      mv -f "$TOKEN_FILE.new" "$TOKEN_FILE"
+      say "token stored; every devbox's next \`claude\` uses it"
+      ;;
+    status)
+      if [ -s "$TOKEN_FILE" ]; then
+        echo "set (since $(date -r "$TOKEN_FILE" '+%Y-%m-%d %H:%M'))"
+      else
+        echo "not set (each box uses its own Claude Code login)"
+      fi
+      ;;
+    clear) rm -f "$TOKEN_FILE"; say "token removed" ;;
+    *) die "usage: devbox-admin token set|status|clear" ;;
+  esac
+}
+
+# The GitHub tokens (fine-grained PATs, one per resource owner), read by git and gh in every
+# box (box/git-credential-github.sh, box/gh-wrapper.sh): lines owner=token, the first one the
+# default. Sent by `devboxen github push` (from the instance's encrypted secrets).
+cmd_github() {
+  case "${1:-}" in
+    set)
+      ensure_dirs
+      local line n=0 out=""
+      while IFS= read -r line || [ -n "$line" ]; do
+        line="$(printf '%s' "$line" | tr -d '[:space:]')"
+        [ -n "$line" ] && [ "${line:0:1}" != "#" ] || continue
+        [[ "$line" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}=(github_pat_|ghp_)[A-Za-z0-9_]{20,}$ ]] ||
+          die "line $((n + 1)): expected owner=github_pat_… (nothing stored)"
+        out+="$line"$'\n'; n=$((n + 1))
+      done
+      [ "$n" -gt 0 ] || die "no tokens on stdin (nothing stored)"
+      (umask 077 && printf '%s' "$out" >"$GITHUB_FILE.new")
+      chown "$DEV_UID:$DEV_UID" "$GITHUB_FILE.new"
+      chmod 0400 "$GITHUB_FILE.new"
+      mv -f "$GITHUB_FILE.new" "$GITHUB_FILE"
+      say "$n GitHub tokens stored ($(cut -d= -f1 "$GITHUB_FILE" | paste -sd, -)); every box's next git or gh uses them"
+      ;;
+    status)
+      if [ -s "$GITHUB_FILE" ]; then
+        echo "set for $(cut -d= -f1 "$GITHUB_FILE" | paste -sd, -) (default $(head -n1 "$GITHUB_FILE" | cut -d= -f1); since $(date -r "$GITHUB_FILE" '+%Y-%m-%d %H:%M'))"
+      else
+        echo "not set (git and gh in the boxes are not logged in to GitHub)"
+      fi
+      ;;
+    clear) rm -f "$GITHUB_FILE"; say "GitHub tokens removed" ;;
+    *) die "usage: devbox-admin github set|status|clear" ;;
+  esac
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  create) cmd_create "$@" ;;
+  list|ls) cmd_list "$@" ;;
+  stop) cmd_stop "$@" ;;
+  start) cmd_start "$@" ;;
+  rebuild) cmd_rebuild "$@" ;;
+  destroy) cmd_destroy "$@" ;;
+  token) cmd_token "$@" ;;
+  github) cmd_github "$@" ;;
+  *) sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

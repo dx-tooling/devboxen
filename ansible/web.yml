@@ -1,0 +1,175 @@
+---
+# devboxen-web's host side (docs/web.md): the SSH tunnels that let the front (the host in
+# the group devboxen_front, which serves the browser UI) reach the backend of every other
+# devboxen host.
+#
+#   front                                            other host (backend)
+#   devbox-web-tunnel@<host>.service  --ssh-->  devbox-web@<its address>
+#   /var/lib/devbox/web/hosts/<host>.sock  ===  127.0.0.1:7700 (devboxen-web backend)
+#
+# The tunnel user may do nothing but forward to 127.0.0.1:7700: no shell, no pty, no other
+# port, no socket, no remote forwarding (its key's options and a Match block in sshd). Its
+# key lives only on the front (root-only); root there can reach the other hosts' boxes
+# through the UI anyway.
+#
+# The backend hosts must be running (an on-demand cloud host: start it first).
+#
+#   ansible-playbook -i <inventory> web.yml --check --diff
+- name: The front's tunnel key
+  hosts: devboxen_front
+  gather_facts: false
+  become: false # devboxen connects as root
+  tasks:
+    - name: Exactly one front
+      ansible.builtin.assert:
+        that: groups['devboxen_front'] | length == 1
+        fail_msg: "the group devboxen_front must hold exactly one host"
+        quiet: true
+      run_once: true
+
+    - name: The directory of the tunnel config
+      ansible.builtin.file:
+        path: /etc/devbox-web
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: The tunnel key (made once, on the front; never leaves it)
+      ansible.builtin.command:
+        cmd: ssh-keygen -q -t ed25519 -N '' -C devbox-web-tunnel -f /etc/devbox-web/tunnel_ed25519
+        creates: /etc/devbox-web/tunnel_ed25519
+
+    - name: Read the tunnel key's public half
+      ansible.builtin.slurp:
+        src: /etc/devbox-web/tunnel_ed25519.pub
+      register: tunnel_pubkey
+      # In check mode on a first run the key does not exist yet.
+      ignore_errors: "{{ ansible_check_mode }}"
+
+- name: The tunnel's end on every other devboxen host
+  hosts: devboxen_hosts:!devboxen_front
+  gather_facts: false
+  become: false
+
+  vars:
+    front: "{{ groups['devboxen_front'][0] }}"
+    front_pubkey: "{{ (hostvars[front].tunnel_pubkey.content | default('') | b64decode | trim) }}"
+
+  handlers:
+    - name: reload sshd
+      ansible.builtin.shell: sshd -t && systemctl reload ssh
+
+  tasks:
+    - name: The tunnel user (no shell, no password)
+      ansible.builtin.user:
+        name: devbox-web
+        system: true
+        shell: /usr/sbin/nologin
+        home: /var/lib/devbox-web-tunnel
+        create_home: true
+        password: "!"
+
+    # Only local forwarding, only to the backend. The authorized_keys options say the same;
+    # this is the second layer (and the only one against Unix-socket forwarding).
+    - name: sshd restrictions for the tunnel user
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/60-devbox-web-tunnel.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # devboxen-web's tunnel from the front (ansible/web.yml): only a local forward to
+          # the devboxen-web backend on 127.0.0.1:7700.
+          Match User devbox-web
+              AllowTcpForwarding local
+              PermitOpen 127.0.0.1:7700
+              AllowStreamLocalForwarding no
+              AllowAgentForwarding no
+              X11Forwarding no
+              PermitTTY no
+              PermitTunnel no
+              GatewayPorts no
+              ForceCommand /usr/sbin/nologin
+      notify: reload sshd
+
+    - name: The front's key may open the tunnel, nothing else
+      ansible.posix.authorized_key:
+        user: devbox-web
+        key: "{{ front_pubkey }}"
+        key_options: 'restrict,port-forwarding,permitopen="127.0.0.1:7700",command="/usr/sbin/nologin"'
+        exclusive: true
+      when: front_pubkey | length > 0
+
+    - name: Read this host's SSH host key (the front pins it)
+      ansible.builtin.slurp:
+        src: /etc/ssh/ssh_host_ed25519_key.pub
+      register: host_pubkey
+
+- name: The front's tunnels
+  hosts: devboxen_front
+  gather_facts: false
+  become: false
+
+  vars:
+    backends: "{{ groups['devboxen_hosts'] | difference(groups['devboxen_front']) }}"
+
+  handlers:
+    - name: restart tunnels
+      ansible.builtin.systemd:
+        name: "devbox-web-tunnel@{{ hostvars[item].devboxen_host_name }}"
+        state: restarted
+        daemon_reload: true
+      loop: "{{ backends }}"
+
+  tasks:
+    - name: The tunnels' socket directory (the front mounts /var/lib/devbox/web)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - /var/lib/devbox/web
+        - /var/lib/devbox/web/hosts
+
+    - name: The backends' host keys, pinned
+      ansible.builtin.copy:
+        dest: /etc/devbox-web/known_hosts
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          {% for b in backends %}
+          {{ hostvars[b].ansible_host }} {{ hostvars[b].host_pubkey.content | default('') | b64decode | trim }}
+          {% endfor %}
+      notify: restart tunnels
+
+    - name: Where each tunnel goes
+      ansible.builtin.copy:
+        dest: "/etc/devbox-web/tunnel-{{ hostvars[item].devboxen_host_name }}.env"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          DEVBOX_WEB_TUNNEL_ADDR={{ hostvars[item].ansible_host }}
+      loop: "{{ backends }}"
+      notify: restart tunnels
+
+    - name: The tunnel unit (one instance per backend host)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../host/systemd/devbox-web-tunnel@.service"
+        dest: /etc/systemd/system/devbox-web-tunnel@.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: restart tunnels
+
+    - name: The tunnels run
+      ansible.builtin.systemd:
+        name: "devbox-web-tunnel@{{ hostvars[item].devboxen_host_name }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+      loop: "{{ backends }}"

@@ -1,0 +1,113 @@
+---
+# devboxen onto the hosts: the install in /opt/devboxen (box/, host/, web/ and the web
+# server's source, for building on the host) and devboxen-web started: the front on the
+# host in devboxen_front, a backend on every other one. The boxes are only recreated with
+# -e devboxen_rebuild_boxes=true: that ends their tmux sessions (their volumes stay).
+#
+#   ansible-playbook -i <inventory> deploy.yml -e devboxen_web_htpasswd_file=<decrypted file>
+#
+# Variables (inventory):
+#   devboxen_web_tls               auto (Caddy, Let's Encrypt; default) or proxy
+#   devboxen_web_domain            the UI's domain (required for auto)
+#   devboxen_web_compose_override  a local compose file merged on top (proxy: your proxy's network, labels)
+#   devboxen_web_image             a published devboxen-web image (default: built on the host)
+#   devboxen_web_htpasswd_file     a local htpasswd file (bcrypt), for the front
+- name: devboxen on the hosts
+  hosts: devboxen_hosts
+  gather_facts: false
+  become: false # devboxen connects as root
+
+  vars:
+    root: /opt/devboxen
+    is_front: "{{ inventory_hostname in (groups['devboxen_front'] | default([])) }}"
+    tls: "{{ devboxen_web_tls | default('auto') }}"
+    others: "{{ groups['devboxen_hosts'] | difference(groups['devboxen_front'] | default([])) }}"
+
+  tasks:
+    - name: The front is set, and has what it needs
+      ansible.builtin.assert:
+        that:
+          - groups['devboxen_front'] | default([]) | length == 1
+          - tls in ['auto', 'proxy']
+          - tls != 'auto' or (devboxen_web_domain | default('') | length > 0)
+          - not is_front or (devboxen_web_htpasswd_file | default('') | length > 0)
+        fail_msg: >-
+          one host in devboxen_front; devboxen_web_tls auto or proxy; auto needs devboxen_web_domain;
+          the front needs devboxen_web_htpasswd_file
+        quiet: true
+
+    - name: The install
+      ansible.posix.synchronize:
+        src: "{{ playbook_dir }}/../{{ item }}"
+        dest: "{{ root }}/"
+        delete: true
+        checksum: true
+        rsync_opts:
+          - --exclude=/web/htpasswd
+          - --exclude=/web/session-key
+          - --exclude=/web/.env
+          - --exclude=/web/compose.override.yaml
+          - --exclude=.DS_Store
+      loop: [box, host, web, cmd, go.mod, go.sum]
+
+    - name: The front's password file (root-only)
+      ansible.builtin.copy:
+        src: "{{ devboxen_web_htpasswd_file }}"
+        dest: "{{ root }}/web/htpasswd"
+        owner: root
+        group: root
+        mode: "0600"
+      when: is_front
+      no_log: true
+
+    # Signs the login cookies: made once; deleting it logs every browser out.
+    - name: The front's session key (made once)
+      ansible.builtin.shell: umask 077 && head -c 32 /dev/urandom > session-key.new && mv session-key.new session-key
+      args:
+        chdir: "{{ root }}/web"
+        creates: "{{ root }}/web/session-key"
+      when: is_front
+
+    - name: The instance's compose override
+      ansible.builtin.copy:
+        src: "{{ devboxen_web_compose_override }}"
+        dest: "{{ root }}/web/compose.override.yaml"
+        mode: "0644"
+      when: is_front and devboxen_web_compose_override is defined
+
+    - name: No compose override
+      ansible.builtin.file:
+        path: "{{ root }}/web/compose.override.yaml"
+        state: absent
+      when: not (is_front and devboxen_web_compose_override is defined)
+
+    - name: devboxen-web's settings
+      ansible.builtin.copy:
+        dest: "{{ root }}/web/.env"
+        mode: "0644"
+        content: |
+          # Written by devboxen (ansible/deploy.yml).
+          {% if is_front %}
+          COMPOSE_PROFILES=front{{ ',auto' if tls == 'auto' else '' }}
+          COMPOSE_FILE=compose.yaml{{ ':compose.override.yaml' if devboxen_web_compose_override is defined else '' }}
+          DEVBOXEN_WEB_DOMAIN={{ devboxen_web_domain | default('') }}
+          DEVBOXEN_WEB_REMOTES={{ others | map('extract', hostvars, 'devboxen_host_name') | join(',') }}
+          {% else %}
+          COMPOSE_PROFILES=backend
+          {% endif %}
+          {% if devboxen_web_image is defined %}
+          DEVBOXEN_WEB_IMAGE={{ devboxen_web_image }}
+          {% endif %}
+
+    - name: devboxen-web runs
+      ansible.builtin.command:
+        cmd: >-
+          docker compose up -d --remove-orphans
+          {{ '--pull always' if devboxen_web_image is defined else '--build' }}
+        chdir: "{{ root }}/web"
+      register: web_up
+      changed_when: "'Recreated' in web_up.stderr or 'Started' in web_up.stderr or 'Created' in web_up.stderr"
+
+    - name: The boxes, recreated with the current image (their sessions end)
+      ansible.builtin.command: devbox-admin rebuild
+      when: devboxen_rebuild_boxes | default(false) | bool

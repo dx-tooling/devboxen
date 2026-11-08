@@ -1,0 +1,43 @@
+---
+# The foundation of every devboxen host: Ubuntu, a few base packages and Docker (Ubuntu's
+# build, not docker-ce). Idempotent; on a provisioned host it reports no changes.
+#
+#   ansible-playbook -i <inventory> base.yml --check --diff
+- name: Host foundation
+  hosts: devboxen_hosts
+  gather_facts: true
+  become: false # devboxen connects as root
+
+  tasks:
+    - name: The host runs Ubuntu
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['architecture'] == 'x86_64'
+        fail_msg: >-
+          devboxen hosts run Ubuntu (24.04) on x86_64; found
+          {{ ansible_facts['distribution'] | default('unknown') }} on {{ ansible_facts['architecture'] | default('unknown') }}
+        quiet: true
+
+    - name: Base packages and the Docker engine are installed
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - openssl
+          - git
+          - rsync
+          - jq
+          - nftables
+          - docker.io # Docker engine (Ubuntu's build)
+          - docker-compose-v2 # the `docker compose` plugin
+          - containerd
+        state: present
+        update_cache: true
+        cache_valid_time: 86400
+
+    - name: Docker engine is enabled and running
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
