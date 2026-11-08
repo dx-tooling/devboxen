@@ -120,9 +120,13 @@ func (a *app) connect(t target, session string, command ...string) error {
 	remote = append(remote, command...)
 
 	// Ctrl-C belongs to the remote side while connected; between attempts it ends the loop.
+	// Being told to end (SIGTERM, SIGHUP) ends it at once: no reconnect.
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigs, os.Interrupt)
 	defer signal.Stop(sigs)
+	ends := make(chan os.Signal, 1)
+	signal.Notify(ends, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(ends)
 
 	start := true
 	for {
@@ -134,7 +138,19 @@ func (a *app) connect(t target, session string, command ...string) error {
 			"-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "ConnectTimeout=10"},
 			remoteCommand(remote...))
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		err := cmd.Run()
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		var err error
+		select {
+		case err = <-done:
+		case s := <-ends:
+			_ = cmd.Process.Signal(s)
+			<-done
+			return exitCode(143)
+		}
 		var ee *exec.ExitError
 		if err == nil || (errors.As(err, &ee) && ee.ExitCode() != 255) {
 			return exitErr(err)
@@ -150,6 +166,8 @@ func (a *app) connect(t target, session string, command ...string) error {
 		select {
 		case <-sigs:
 			return exitCode(130)
+		case <-ends:
+			return exitCode(143)
 		case <-time.After(3 * time.Second):
 		}
 	}

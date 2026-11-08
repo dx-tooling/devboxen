@@ -38,6 +38,7 @@ Hosts:
                                           set up or update the hosts and the browser UI
 
 Other:
+  devboxen tui                            all of the above as a menu
   devboxen secrets keygen                 make the age key pair for the encrypted secrets
   devboxen version
 
@@ -114,6 +115,8 @@ func run(args []string) error {
 		return a.cmdSecrets(args)
 	case "state":
 		return a.cmdState(args)
+	case "tui":
+		return a.cmdTUI(args)
 	}
 	return fmt.Errorf("unknown command %q (devboxen help)", cmd)
 }

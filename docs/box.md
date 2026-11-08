@@ -54,7 +54,15 @@ devboxen create client2@cloud --mem 12g --cpus 4
 devboxen host status                 # running / stopped, instance type, IP
 devboxen host start | stop           # stop: lists the boxes and sessions, asks
 devboxen costs                       # what an on-demand host costs
+
+devboxen tui                         # all of the above as a menu
 ```
+
+`devboxen tui` shows every host's boxes and sessions (and an on-demand host's costs) and
+lets you pick what to do: reattach a session, start a new shell or Claude Code session,
+create, start, stop or destroy a box, start or stop a host. It prints the command it runs,
+so you learn the shortcut, and comes back when the command ends (for a session: when you
+detach with Ctrl-b d or exit). Esc goes back. `NO_COLOR=1` turns colours off.
 
 Box names: 1–11 characters, lowercase letters, digits and `-` (the box's bridge `dbx-<name>`
 must fit Linux's 15-character interface names). The **default box** is `main` if it exists,

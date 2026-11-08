@@ -47,3 +47,17 @@ func TestShellQuote(t *testing.T) {
 		}
 	}
 }
+
+func TestParseKeys(t *testing.T) {
+	got := parseKeys([]byte("\x1b[B\x1b[B\x1b[Bq\r\x1b\x1b[5~é\x7f\x03"))
+	want := []keyEvent{{key: keyDown}, {key: keyDown}, {key: keyDown}, {r: 'q'}, {key: keyEnter},
+		{key: keyEsc}, {key: keyPgUp}, {r: 'é'}, {key: keyBackspace}, {key: keyCtrlC}}
+	if len(got) != len(want) {
+		t.Fatalf("%v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("%d: %v, want %v", i, got[i], want[i])
+		}
+	}
+}
