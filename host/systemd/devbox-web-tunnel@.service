@@ -16,7 +16,7 @@ EnvironmentFile=/etc/devbox-web/tunnel-%i.env
 ExecStartPre=/bin/rm -f /var/lib/devbox/web/hosts/%i.sock
 ExecStart=/usr/bin/ssh -N -T \
   -i /etc/devbox-web/tunnel_ed25519 -o IdentitiesOnly=yes -o IdentityAgent=none \
-  -o UserKnownHostsFile=/etc/devbox-web/known_hosts -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile=/etc/devbox-web/known_hosts-%i -o StrictHostKeyChecking=yes \
   -o BatchMode=yes -o ConnectTimeout=10 \
   -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
   -o ExitOnForwardFailure=yes \

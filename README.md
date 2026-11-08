@@ -7,9 +7,8 @@ without access to your laptop, your SSH keys or your other projects. You use the
 terminal or from any browser, also on your phone, and everything keeps running when you
 disconnect.
 
-**Status:** work in progress. Everything described here is in daily use, but setting it up
-still means running Ansible by hand. A `devboxen` command line tool that does the setup for
-you is being built.
+**Status:** early. Everything described here is in daily use. The `devboxen` command line
+tool sets it all up; a guided first-time setup is still to come.
 
 ## Is it for you?
 
@@ -50,24 +49,39 @@ organization. Use [Coder](https://github.com/coder/coder) for that.
 | [`cmd/devboxen-web/`](cmd/devboxen-web/), [`web/`](web/) | The browser interface ([docs](docs/web.md)) |
 | [`ansible/`](ansible/) | Server setup and deployment |
 | [`tofu/aws-host/`](tofu/aws-host/) | OpenTofu module for an on-demand AWS server |
-| [`docs/`](docs/) | [Boxes](docs/box.md), [browser interface](docs/web.md), [security](docs/security.md) |
+| [`cmd/devboxen/`](cmd/devboxen/) | The `devboxen` command line tool |
+| [`docs/`](docs/) | [Settings](docs/config.md), [boxes](docs/box.md), [browser interface](docs/web.md), [security](docs/security.md) |
 
-## Trying it today
+## Getting started
 
-You need an Ubuntu 24.04 server (x86_64) that you can reach as root with an SSH key, a domain
-name that points to it, and Ansible on your computer.
+You need:
+
+- a server with Ubuntu 24.04 (x86_64) that you can reach as root with your SSH key;
+- a domain name that points to it, for the browser interface;
+- on your computer: Go, `ssh` and Ansible.
 
 ```bash
-cd ansible
-ansible-galaxy collection install -r requirements.yml
-cp inventory.example.ini my.ini                          # enter your server and domain
-htpasswd -B -C 12 -c ~/devboxen.htpasswd you             # password for the browser interface
-ansible-playbook -i my.ini site.yml -e devboxen_web_htpasswd_file=~/devboxen.htpasswd
-ssh root@<server> devbox-admin create main               # create the first box
-ssh -t root@<server> devbox                              # open a shell in it
+go install github.com/dx-tooling/devboxen/cmd/devboxen@latest
+
+mkdir my-devboxen && cd my-devboxen && git init      # a private repository for your setup
+curl -fsSLo devboxen.toml https://raw.githubusercontent.com/dx-tooling/devboxen/main/devboxen.example.toml
+$EDITOR devboxen.toml                                 # your server and domain
+printf 'secrets/identity.txt\n' > .gitignore
+
+devboxen secrets keygen        # the key pair for your encrypted secrets
+devboxen web passwd            # the password for the browser interface
+devboxen github edit           # optional: GitHub tokens for the boxes
+devboxen deploy                # sets up the server (takes a few minutes)
+devboxen host setup            # creates the first box, "main"
+devboxen login                 # optional: one Claude Code login for all boxes
+devboxen shell                 # a shell in it (or: devboxen claude)
 ```
 
-Then open `https://<your domain>` in a browser.
+Then open `https://<your domain>`. Commit everything except `secrets/identity.txt`, and keep
+that file safe: without it, the secrets cannot be decrypted.
+
+`devboxen help` lists all commands. The settings are described in
+[docs/config.md](docs/config.md).
 
 ## License
 

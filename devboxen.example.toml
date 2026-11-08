@@ -1,0 +1,27 @@
+# devboxen.toml: your hosts and where your secrets are. Keep it in a private repository of
+# your own, next to the encrypted secrets. Paths are relative to this file.
+# Reference: docs/config.md
+
+# The host that `devboxen shell` and friends use when you name none (default: the first).
+default_host = "vps"
+
+# A server that is always on. devboxen logs in as root with your SSH key.
+[hosts.vps]
+ssh = "root@203.0.113.10"
+
+# Optional: an AWS EC2 instance that runs only while you use it (tofu/aws-host).
+# [hosts.cloud]
+# ssh = "root@198.51.100.20"
+# aws = { profile = "devboxen", region = "eu-central-1", instance = "i-0123456789abcdef0", data_volume = "vol-0123456789abcdef0" }
+
+# The browser interface: served by one host, for all of them.
+[web]
+front = "vps"
+domain = "devboxen.example.com"   # must point to the front host
+tls = "auto"                      # "auto": devboxen gets the certificate; "proxy": your own reverse proxy
+
+[secrets]
+identity = "secrets/identity.txt"           # private key: never commit it (devboxen secrets keygen)
+recipients = "secrets/age-recipient.txt"    # public key: commit it
+github_tokens = "secrets/github-tokens.age" # devboxen github edit
+web_htpasswd = "secrets/web-htpasswd.age"   # devboxen web passwd

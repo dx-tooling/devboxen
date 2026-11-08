@@ -29,7 +29,7 @@ are per host.
 
 ## Using it
 
-On your laptop, the `devboxen` CLI (needs `ssh`):
+On your computer, the `devboxen` command (needs `ssh`; settings: [config.md](config.md)):
 
 ```bash
 devboxen shell                       # into the default box (main), login shell, session "shell"
@@ -54,8 +54,6 @@ devboxen create client2@cloud --mem 12g --cpus 4
 devboxen host status                 # running / stopped, instance type, IP
 devboxen host start | stop           # stop: lists the boxes and sessions, asks
 devboxen costs                       # what an on-demand host costs
-
-devboxen tui                         # all of the above as a menu
 ```
 
 Box names: 1–11 characters, lowercase letters, digits and `-` (the box's bridge `dbx-<name>`

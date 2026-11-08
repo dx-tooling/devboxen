@@ -113,6 +113,9 @@
 
   vars:
     backends: "{{ groups['devboxen_hosts'] | difference(groups['devboxen_front']) }}"
+    # The backends this run reached (a deploy limited to some hosts leaves the others' tunnel
+    # settings as they are).
+    reached: "{{ backends | map('extract', hostvars) | selectattr('host_pubkey', 'defined') | map(attribute='inventory_hostname') | list }}"
 
   handlers:
     - name: restart tunnels
@@ -120,7 +123,7 @@
         name: "devbox-web-tunnel@{{ hostvars[item].devboxen_host_name }}"
         state: restarted
         daemon_reload: true
-      loop: "{{ backends }}"
+      loop: "{{ reached }}"
 
   tasks:
     - name: The tunnels' socket directory (the front mounts /var/lib/devbox/web)
@@ -134,16 +137,15 @@
         - /var/lib/devbox/web
         - /var/lib/devbox/web/hosts
 
-    - name: The backends' host keys, pinned
+    - name: Each backend's host key, pinned
       ansible.builtin.copy:
-        dest: /etc/devbox-web/known_hosts
+        dest: "/etc/devbox-web/known_hosts-{{ hostvars[item].devboxen_host_name }}"
         owner: root
         group: root
         mode: "0600"
         content: |
-          {% for b in backends %}
-          {{ hostvars[b].ansible_host }} {{ hostvars[b].host_pubkey.content | default('') | b64decode | trim }}
-          {% endfor %}
+          {{ hostvars[item].ansible_host }} {{ hostvars[item].host_pubkey.content | b64decode | trim }}
+      loop: "{{ reached }}"
       notify: restart tunnels
 
     - name: Where each tunnel goes
@@ -154,7 +156,7 @@
         mode: "0644"
         content: |
           DEVBOX_WEB_TUNNEL_ADDR={{ hostvars[item].ansible_host }}
-      loop: "{{ backends }}"
+      loop: "{{ reached }}"
       notify: restart tunnels
 
     - name: The tunnel unit (one instance per backend host)
@@ -172,4 +174,4 @@
         enabled: true
         state: started
         daemon_reload: true
-      loop: "{{ backends }}"
+      loop: "{{ reached }}"
