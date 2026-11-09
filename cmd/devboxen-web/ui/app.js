@@ -682,6 +682,7 @@ window.addEventListener("pageshow", (e) => { if (e.persisted) backInTab(); });
 const TOUCH = window.matchMedia("(pointer: coarse)");
 const KEYS = [
   ["esc", "Esc"], ["tab", "Tab"], ["stab", "Shift-Tab", "Shift-Tab (in Claude Code: switch the mode)"], ["ctrl", "Ctrl"], ["alt", "Alt"],
+  ["paste", "Paste", "Paste from the clipboard (or: hold a finger on the terminal)"],
   ["left", "←"], ["up", "↑"], ["down", "↓"], ["right", "→"],
   ["^c", "^C"], ["^b", "^B", "tmux prefix"],
   ["|"], ["~"], ["/"], ["-"], ["_"], ["\\"], ["`"],
@@ -708,6 +709,46 @@ function setMod(name, on) {
   const btn = document.querySelector(`#keys [data-key="${name}"]`);
   if (btn) btn.classList.toggle("on", on);
 }
+
+// Paste on a phone. A long press on the terminal opens no Paste menu (the terminal is a
+// canvas; the program has the touches), and browsers paste only into text fields. So: the
+// clipboard is read (iOS shows its own small Paste button for that, which you tap), and the
+// text goes into the terminal as a paste (bracketed, if the program asked for it). Reading
+// needs a tap or touch that has just ended; win is the window it happened in. If the browser
+// refuses, a text field opens instead: paste there the usual way, then Send.
+function pasteFromClipboard(win) {
+  const term = terminal();
+  if (!term) return;
+  let reading;
+  try { reading = win.navigator.clipboard.readText(); } catch { reading = Promise.reject(); }
+  reading.then((text) => {
+    if (text) term.paste(text);
+    else toast("the clipboard is empty");
+  }, () => openPastePanel());
+}
+
+function openPastePanel() {
+  const panel = $("paste-panel");
+  panel.hidden = false;
+  $("paste-text").value = "";
+  $("paste-text").focus();
+}
+
+function closePastePanel() {
+  $("paste-panel").hidden = true;
+  $("paste-text").value = "";
+  const term = terminal();
+  if (term) term.focus();
+}
+
+$("paste-panel").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("paste-text").value;
+  const term = terminal();
+  if (text && term) term.paste(text);
+  closePastePanel();
+});
+$("paste-cancel").addEventListener("click", closePastePanel);
 
 // The data for a key of the row or a character typed while Ctrl or Alt is on; uses up the
 // modifiers.
@@ -739,7 +780,7 @@ function keyData(key, term) {
   // No focus for the row: the terminal keeps it (and the keyboard stays). With pointerdown
   // prevented, WebKit fires no click after a tap: the key is pressed on pointerup (a swipe
   // along the row is a pointercancel, no key).
-  let down = null;
+  let down = null, pasteOnTouchEnd = false;
   bar.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     down = e.target.closest("button");
@@ -751,6 +792,12 @@ function keyData(key, term) {
     down = null;
     if (!btn || btn !== was) return;
     const key = btn.dataset.key;
+    if (key === "paste") {
+      // WebKit lets a page read the clipboard in a touchend, which comes right after this.
+      if (e.pointerType === "touch") pasteOnTouchEnd = true;
+      else pasteFromClipboard(window);
+      return;
+    }
     if (key === "ctrl" || key === "alt") {
       setMod(key, !mods[key]);
       return;
@@ -758,6 +805,11 @@ function keyData(key, term) {
     const term = terminal();
     if (!term) return;
     term.input(keyData(key, term), true);
+  });
+  bar.addEventListener("touchend", () => {
+    if (!pasteOnTouchEnd) return;
+    pasteOnTouchEnd = false;
+    pasteFromClipboard(window);
   });
   const applyTouch = () => { bar.hidden = !TOUCH.matches; };
   TOUCH.addEventListener("change", applyTouch);
@@ -813,7 +865,7 @@ function hookTerminalTouch() {
     if (win.__devboxTouch) return;
     win.__devboxTouch = true;
     const doc = win.document;
-    let startY = null, lastY = 0, acc = 0, dragging = false;
+    let startY = null, lastY = 0, acc = 0, dragging = false, since = 0, fingers = 0;
     const wheel = (x, y, dir) => {
       const target = doc.elementFromPoint(x, y) || term.element;
       target.dispatchEvent(new win.WheelEvent("wheel", {
@@ -826,6 +878,8 @@ function hookTerminalTouch() {
       lastY = t.clientY;
       acc = 0;
       dragging = false;
+      since = Date.now();
+      fingers = e.touches.length;
     }, { capture: true, passive: true });
     doc.addEventListener("touchmove", (e) => {
       if (startY === null) return;
@@ -845,7 +899,14 @@ function hookTerminalTouch() {
       }
     }, { capture: true, passive: false });
     const end = () => { startY = null; };
-    doc.addEventListener("touchend", end, { capture: true, passive: true });
+    // A long press (half a second, one finger, not moved) pastes, when the finger lifts.
+    doc.addEventListener("touchend", (e) => {
+      const long = startY !== null && !dragging && fingers === 1 && Date.now() - since >= 500;
+      end();
+      if (!long) return;
+      e.preventDefault(); // no click, no other menu
+      pasteFromClipboard(win);
+    }, { capture: true, passive: false });
     doc.addEventListener("touchcancel", end, { capture: true, passive: true });
   };
   attempt();

@@ -56,6 +56,13 @@
     <section class="pane" id="pane-term">
       <iframe id="term" title="Terminal" allow="clipboard-read; clipboard-write"></iframe>
       <button type="button" class="reconnect" id="reconnect" hidden><span>Disconnected · tap to reconnect</span></button>
+      <form class="paste-panel" id="paste-panel" hidden>
+        <textarea id="paste-text" rows="3" placeholder="Hold here, choose Paste, then Send" aria-label="Text for the terminal"></textarea>
+        <div class="paste-actions">
+          <button type="button" id="paste-cancel">Cancel</button>
+          <button type="submit" class="primary">Send</button>
+        </div>
+      </form>
       <div class="keys" id="keys" role="toolbar" aria-label="Keys the keyboard lacks" hidden></div>
     </section>
   </main>
