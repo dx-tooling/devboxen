@@ -19,12 +19,17 @@ everything else. The boxes themselves: [box.md](box.md).
   next to the sessions.
 - **On a touch screen**, a row of keys under the terminal, as in Termux or Blink Shell: Esc,
   Tab, Shift-Tab, Ctrl and Alt (for the next key, from the row or the keyboard: Ctrl, then
-  `r`), the arrows, Ctrl-C, tmux's prefix Ctrl-B and `|`, `~`, `/`, `-`, `_`, `\` and a
+  `r`), Paste, the arrows, Ctrl-C, tmux's prefix Ctrl-B and `|`, `~`, `/`, `-`, `_`, `\` and a
   backtick. Tapping it keeps the keyboard open; the page follows the part of the screen the
   keyboard leaves (iOS lays it over the page), so the prompt and the row stay visible.
   Dragging a finger up or down scrolls: the page turns it into mouse wheel steps, so tmux
   scrolls its history (copy mode; scroll back to the bottom or `q` to leave it). xterm.js
-  alone ignores touch while tmux has the mouse.
+  alone ignores touch while tmux has the mouse. **Paste:** hold a finger on the terminal for
+  half a second and lift it, or tap Paste in the row: the page reads the clipboard (iOS
+  shows its small Paste button for that; tap it) and sends the text as one paste. A long
+  press alone opens no menu there: the terminal is a canvas, and tmux has the touches. If
+  the browser refuses the clipboard, a text field opens instead: paste into it the usual
+  way, then Send.
 - **The sessions are the same ones** as from your laptop: start Claude in the browser,
   continue in the terminal at home, or the other way round. Attaching from your laptop
   (`devboxen shell`) takes the session over and the browser tab offers to reconnect (one tap
@@ -69,6 +74,15 @@ browser ──https──> Caddy (TLS "auto") or your reverse proxy ("proxy")
 | front | the host in `devboxen_front`; [`web/compose.yaml`](../web/compose.yaml), profile `front` (+ `auto`: Caddy) | the UI ([`ui/`](../cmd/devboxen-web/ui/)), `/api/hosts`, and the proxy `/h/<host>/b/<box>/{code,term,screen,watch}/…` |
 | backend | every other host, profile `backend` | the same for its own boxes, on `127.0.0.1:7700` (host network), no password |
 | tunnel | front: `devbox-web-tunnel@<host>.service`; the other host: the user `devbox-web` | [`ansible/web.yml`](../ansible/web.yml) |
+
+**What the front knows about the other hosts** is only what their backends answer through
+the tunnels. It has no cloud credentials and calls no AWS API. For the overview it asks each
+backend for its boxes; no answer within 4 seconds shows that host as "not reachable
+(stopped?)". The front cannot tell a stopped EC2 instance from a crashed host or a network
+problem, and it cannot start a host: that needs your AWS login, on your computer
+(`devboxen host start`, or connecting to one of its boxes). Once the host runs again, the
+tunnel reconnects by itself (it retries with growing pauses, at most a minute apart), and
+the page shows its boxes again.
 
 ## TLS
 

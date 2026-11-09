@@ -36,6 +36,10 @@ devboxen host status cloud
 devboxen costs cloud         # what it has cost (today, yesterday, 7 days, this month)
 ```
 
+In the browser interface, a stopped host shows as "not reachable"; the interface cannot
+start it (it has no AWS access, see [web.md](web.md#how-it-fits-together)). Start it from
+your computer, and the page finds it within a minute.
+
 To change something, for example a bigger instance type, edit `aws/<name>/main.tf` and run
 `tofu apply` there (a new instance type takes effect at the next start). Commit the whole
 directory, including `terraform.tfstate`: it holds no secrets, and without it OpenTofu no
