@@ -30,31 +30,20 @@ func splitPullSpec(s string) (box, p string) {
 }
 
 func (a *app) cmdPull(args []string) error {
-	const use = "devboxen pull [box[@host]:]<path> [local-dir] [--print] [--force]"
-	pos, opts, err := splitFlags(args, map[string]bool{"print": false, "force": false})
-	if err != nil || len(pos) < 1 || len(pos) > 2 {
-		return errors.New(use + "\n(a relative path starts in the box's /home/dev; the default local-dir is ~/Downloads, else here)")
+	const use = "devboxen pull [box[@host]:]<path> [local-dir] [--print] [--force]\n" +
+		"       devboxen pull [box[@host]:]<path>... --to <local-dir>   (several paths)\n" +
+		"(a relative path starts in the box's /home/dev; the default local-dir is ~/Downloads, else here)"
+	pos, opts, err := splitFlags(args, map[string]bool{"print": false, "force": false, "to": true})
+	if err != nil || len(pos) < 1 {
+		return errors.New(use)
 	}
-	boxSpec, remotePath := splitPullSpec(pos[0])
-	t, err := a.parseTarget(boxSpec)
-	if err != nil {
-		return err
-	}
-	remotePath = strings.TrimPrefix(remotePath, "~/")
-	if remotePath == "" || remotePath == "~" {
-		remotePath = "."
-	}
-	dir, name := path.Split(strings.TrimRight(remotePath, "/"))
-	if dir == "" {
-		dir = "."
-	}
-	if name == "" { // "/"
-		return errors.New("no path to download: " + pos[0])
-	}
-
-	local := defaultPullDir()
-	if len(pos) == 2 {
-		local = pos[1]
+	local, paths := defaultPullDir(), pos
+	if opts["to"] != "" {
+		local = opts["to"]
+	} else if len(pos) == 2 {
+		local, paths = pos[1], pos[:1]
+	} else if len(pos) > 2 {
+		return errors.New(use)
 	}
 	if strings.HasPrefix(local, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -62,21 +51,42 @@ func (a *app) cmdPull(args []string) error {
 		}
 	}
 
-	remote := []string{a.remoteDevbox}
-	if t.box != "" {
-		remote = append(remote, "-b", t.box)
+	// All paths come from one box (the first one's prefix; the others may leave it out).
+	boxSpec, _ := splitPullSpec(paths[0])
+	t, err := a.parseTarget(boxSpec)
+	if err != nil {
+		return err
 	}
-	remote = append(remote, "--", "tar", "-C", dir, "-cf", "-", name)
+	var remotes []string
+	for _, p := range paths {
+		spec, rp := splitPullSpec(p)
+		if spec != boxSpec && spec != "" {
+			return errors.New("all paths must be from the same box")
+		}
+		rp = strings.TrimPrefix(rp, "~/")
+		if rp == "" || rp == "~" {
+			rp = "."
+		}
+		if strings.Trim(rp, "/") == "" {
+			return errors.New("no path to download: " + p)
+		}
+		remotes = append(remotes, rp)
+	}
 
 	if opts["print"] == "true" {
-		fmt.Printf("mkdir -p %s && ssh -o ForwardAgent=no %s %s | tar -xf - -C %s\n",
-			shellQuote(local), t.host.SSH, shellQuote(remoteCommand(remote...)), shellQuote(local))
+		for _, rp := range remotes {
+			dir, name := splitRemote(rp)
+			fmt.Printf("mkdir -p %s && ssh -o ForwardAgent=no %s %s | tar -xf - -C %s\n",
+				shellQuote(local), t.host.SSH, shellQuote(remoteCommand(a.tarCommand(t, dir, name)...)), shellQuote(local))
+		}
 		return nil
 	}
 
-	if name != "." {
-		if _, err := os.Lstat(filepath.Join(local, name)); err == nil && opts["force"] != "true" {
-			return fmt.Errorf("%s exists already (--force replaces files of the same name)", filepath.Join(local, name))
+	for _, rp := range remotes {
+		if _, name := splitRemote(rp); name != "." {
+			if _, err := os.Lstat(filepath.Join(local, name)); err == nil && opts["force"] != "true" {
+				return fmt.Errorf("%s exists already (--force replaces files of the same name)", filepath.Join(local, name))
+			}
 		}
 	}
 	if err := os.MkdirAll(local, 0o755); err != nil {
@@ -85,10 +95,38 @@ func (a *app) cmdPull(args []string) error {
 	if err := a.ensureUp(t.host, true); err != nil {
 		return err
 	}
+	for _, rp := range remotes {
+		say("%s:%s -> %s", a.name(t), rp, local)
+		if err := a.pullOne(t, rp, local); err != nil {
+			return err
+		}
+	}
+	say("done")
+	return nil
+}
 
-	say("%s:%s -> %s", a.name(t), remotePath, local)
+func splitRemote(rp string) (dir, name string) {
+	dir, name = path.Split(strings.TrimRight(rp, "/"))
+	if dir == "" {
+		dir = "."
+	}
+	return dir, name
+}
+
+// tarCommand: the command on the host that writes a tar of one file or folder to stdout.
+// -h: a link is followed, so what arrives is the content, not a link that points nowhere here.
+func (a *app) tarCommand(t target, dir, name string) []string {
+	remote := []string{a.remoteDevbox}
+	if t.box != "" {
+		remote = append(remote, "-b", t.box)
+	}
+	return append(remote, "--", "tar", "-h", "-C", dir, "-cf", "-", name)
+}
+
+func (a *app) pullOne(t target, remotePath, local string) error {
+	dir, name := splitRemote(remotePath)
 	// No terminal on ssh (no -t): devbox then runs tar directly and the stream stays clean.
-	src := sshCmd(t.host, []string{"-o", "BatchMode=yes"}, remoteCommand(remote...))
+	src := sshCmd(t.host, []string{"-o", "BatchMode=yes"}, remoteCommand(a.tarCommand(t, dir, name)...))
 	src.Stderr = os.Stderr
 	dst := exec.Command("tar", "-xf", "-", "-C", local)
 	dst.Stderr = os.Stderr
@@ -108,12 +146,11 @@ func (a *app) cmdPull(args []string) error {
 	srcErr := src.Wait()
 	dstErr := dst.Wait()
 	if srcErr != nil {
-		return fmt.Errorf("download failed (is the path right? the box running?): %w", srcErr)
+		return fmt.Errorf("download of %s failed (is the path right? the box running?): %w", remotePath, srcErr)
 	}
 	if dstErr != nil {
-		return fmt.Errorf("unpacking failed: %w", dstErr)
+		return fmt.Errorf("unpacking %s failed: %w", remotePath, dstErr)
 	}
-	say("done")
 	return nil
 }
 

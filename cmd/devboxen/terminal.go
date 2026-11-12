@@ -32,6 +32,8 @@ const (
 	keyCtrlC
 	keyPgUp
 	keyPgDown
+	keyLeft
+	keyRight
 )
 
 // termIO is the terminal while the menu runs.
@@ -66,6 +68,10 @@ func parseKeys(b []byte) []keyEvent {
 				out = append(out, keyEvent{key: keyUp})
 			case "B":
 				out = append(out, keyEvent{key: keyDown})
+			case "C":
+				out = append(out, keyEvent{key: keyRight})
+			case "D":
+				out = append(out, keyEvent{key: keyLeft})
 			case "5~":
 				out = append(out, keyEvent{key: keyPgUp})
 			case "6~":

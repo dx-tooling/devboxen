@@ -684,30 +684,36 @@ func (u *tui) newSession(claude bool) {
 	u.pauseOnError(u.runCmd(args...))
 }
 
-// pull: a file or folder of a box to this computer.
+// pull: files and folders of a box to this computer: browse, mark, choose the folder here.
 func (u *tui) pull() {
 	host, box, ok := u.pickBox("Download from which box?", true)
 	if !ok || !u.ensureRunning(host, box) {
 		return
 	}
-	remote, err := u.t.input("Path in the box (relative: from /home/dev):", "e.g. myproject/var/screenshots", func(s string) string {
-		if strings.TrimSpace(s) == "" || strings.TrimRight(s, "/") == "" {
-			return "a file or folder"
-		}
-		return ""
-	})
-	if err != nil {
+	paths, ok := u.browse(host, box)
+	if !ok {
 		return
 	}
+	fmt.Print("\x1b[2J\x1b[H")
+	fmt.Println(c(cBold, fmt.Sprintf("%d to download:", len(paths))))
+	for _, p := range paths {
+		fmt.Println("  " + p)
+	}
+	fmt.Println()
 	dir, err := u.t.input("Into which folder here?", "empty: "+defaultPullDir(), func(string) string { return "" })
 	if err != nil {
 		return
 	}
-	args := []string{"pull", u.at(host, box) + ":" + strings.TrimSpace(remote)}
-	if dir != "" {
-		args = append(args, dir)
+	if dir == "" {
+		dir = defaultPullDir()
 	}
-	u.pauseOnError(u.runCmd(args...))
+	prefix := u.at(host, box) + ":"
+	args := []string{"pull"}
+	for _, p := range paths {
+		args = append(args, prefix+p)
+	}
+	args = append(args, "--to", dir)
+	u.runCmd(args...)
 	u.pause()
 }
 

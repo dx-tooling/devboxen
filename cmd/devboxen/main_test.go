@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dx-tooling/devboxen/internal/config"
@@ -77,5 +78,33 @@ func TestSplitPullSpec(t *testing.T) {
 		if box != want[0] || p != want[1] {
 			t.Errorf("splitPullSpec(%q) = %q, %q; want %q, %q", in, box, p, want[0], want[1])
 		}
+	}
+}
+
+func TestParseListing(t *testing.T) {
+	out := []byte("ff\t10\tb.txt\x00dd\t4096\tsrc\x00fd\t4096\tlinkdir\x00lf\t7\tlink\x00ff\t1\t.hidden\x00ff\t2\twith\ttab\x00")
+	got := parseListing(out)
+	var names []string
+	for _, e := range got {
+		names = append(names, e.name)
+	}
+	if want := "linkdir src .hidden b.txt link with\ttab"; strings.Join(names, " ") != want {
+		t.Errorf("order: %q, want %q", strings.Join(names, " "), want)
+	}
+	if !got[0].dir || got[0].link {
+		t.Errorf("linkdir: %+v", got[0])
+	}
+	if e := got[4]; !e.link || e.dir {
+		t.Errorf("link: %+v", e)
+	}
+	if humanSize(1536) != "1.5 K" || humanSize(5) != "5 B" {
+		t.Errorf("humanSize: %q %q", humanSize(1536), humanSize(5))
+	}
+}
+
+func TestParseKeysLeftRight(t *testing.T) {
+	got := parseKeys([]byte("\x1b[C\x1b[D"))
+	if len(got) != 2 || got[0].key != keyRight || got[1].key != keyLeft {
+		t.Errorf("got %+v", got)
 	}
 }
