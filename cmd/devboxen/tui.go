@@ -482,7 +482,7 @@ func (u *tui) mainItems() []menuItem {
 	return append(items,
 		menuItem{"+ New shell session…", "new-shell"},
 		menuItem{"+ New Claude Code session…", "new-claude"},
-		menuItem{"↓ Download files from a box…", "pull"},
+		menuItem{"⇄ Files: download and upload…", "pull"},
 		menuItem{"  Boxes: create, start, stop, destroy…", "boxes"},
 		menuItem{"  Hosts: start, stop, costs, logins, GitHub tokens…", "hosts"},
 		menuItem{"  Refresh", "refresh"},
@@ -551,7 +551,7 @@ func (u *tui) do(choice string) error {
 	case choice == "new-claude":
 		u.newSession(true)
 	case choice == "pull":
-		u.pull()
+		u.fileManager()
 	case choice == "boxes":
 		u.boxesMenu()
 	case choice == "hosts":
@@ -684,37 +684,14 @@ func (u *tui) newSession(claude bool) {
 	u.pauseOnError(u.runCmd(args...))
 }
 
-// pull: files and folders of a box to this computer: browse, mark, choose the folder here.
-func (u *tui) pull() {
-	host, box, ok := u.pickBox("Download from which box?", true)
+// files: the two-pane file manager, this computer | a box.
+func (u *tui) fileManager() {
+	host, box, ok := u.pickBox("Files of which box?", true)
 	if !ok || !u.ensureRunning(host, box) {
 		return
 	}
-	paths, ok := u.browse(host, box)
-	if !ok {
-		return
-	}
-	fmt.Print("\x1b[2J\x1b[H")
-	fmt.Println(c(cBold, fmt.Sprintf("%d to download:", len(paths))))
-	for _, p := range paths {
-		fmt.Println("  " + p)
-	}
-	fmt.Println()
-	dir, err := u.t.input("Into which folder here?", "empty: "+defaultPullDir(), func(string) string { return "" })
-	if err != nil {
-		return
-	}
-	if dir == "" {
-		dir = defaultPullDir()
-	}
-	prefix := u.at(host, box) + ":"
-	args := []string{"pull"}
-	for _, p := range paths {
-		args = append(args, prefix+p)
-	}
-	args = append(args, "--to", dir)
-	u.runCmd(args...)
-	u.pause()
+	u.files(host, box)
+	u.stale = true
 }
 
 var memRE, cpusRE = regexp.MustCompile(`^[0-9]+[mg]$`), regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)

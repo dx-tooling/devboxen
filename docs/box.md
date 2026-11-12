@@ -40,6 +40,7 @@ devboxen claude client2 api          # a second Claude in "client2" (session "cl
 devboxen pull myproject/out          # a file or folder from the default box to ~/Downloads
 devboxen pull client2:work/a.zip .   # from the box "client2", into the current folder
 devboxen pull main:a.txt main:b/ --to ~/Desktop   # several at once
+devboxen push report.pdf photos/     # to the box's /home/dev (--to [box:]dir: elsewhere)
 devboxen list                        # boxes of all hosts: status, memory, CPUs, sessions (* = attached)
 
 devboxen create client2              # a new box (options: --mem 4g --cpus 4)
@@ -164,14 +165,24 @@ address on its network (`docker inspect -f '{{range .NetworkSettings.Networks}}{
 tunnel to it from your laptop: `ssh -L 8000:<that address>:8000 root@<host>`. Or open it in
 the box's own browser (below), where `localhost` is the box.
 
-### Downloading with the menu
+### Transferring files with the menu
 
-`devboxen tui`, "Download files from a box": pick the box, then walk its file system from
-`/home/dev` (one folder is read at a time; nothing is changed in the box). Keys: arrows (or
-j/k) to move, → or Enter to open a folder, ← to go up, Space to mark a file or folder (marks
-stay while you walk), `a` to mark everything in the folder, `.` to show dot files, `/` to type
-a path to jump to, `d` to download (the marked ones, or the one under the cursor if none is
-marked), `q` to go back. Then it asks for the folder on your computer and runs `devboxen pull`.
+`devboxen tui`, "Files: download and upload": pick the box, then two panes appear, this
+computer on the left and the box (from `/home/dev`) on the right, as in Midnight Commander.
+Looking changes nothing; a folder of the box is read when you open it.
+
+| Key | |
+|---|---|
+| Tab | the other side becomes the active one |
+| arrows, j/k, PgUp/PgDn | move; → or Enter opens a folder, ← goes up |
+| Space | mark a file or folder (marks stay while you walk); `a` marks all in the folder |
+| `.` · `~` · `/` | show dot files · home · type a path to jump to |
+| `n` | a new folder (on the active side, e.g. as the target of an upload) |
+| `c` or F5 | copy the marked ones (or the one under the cursor) into the folder the other pane shows: a download from the box side, an upload from the computer side. It lists what happens, warns about files that exist there already, and runs `devboxen pull` or `push` (shown, so you have the command for next time) |
+| `q` | back to the menu |
+
+Links are followed, so what arrives is the content. Files of the same name are only replaced
+after you said yes (on the command line: `--force`).
 
 ## In the browser
 

@@ -108,3 +108,10 @@ func TestParseKeysLeftRight(t *testing.T) {
 		t.Errorf("got %+v", got)
 	}
 }
+
+func TestParseKeysTabF5(t *testing.T) {
+	got := parseKeys([]byte("\t\x1b[15~"))
+	if len(got) != 2 || got[0].key != keyTab || got[1].key != keyF5 {
+		t.Errorf("got %+v", got)
+	}
+}
