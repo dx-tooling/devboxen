@@ -37,6 +37,8 @@ devboxen shell client2               # into the box "client2"
 devboxen shell client2 work          # box "client2", another independent session "work"
 devboxen claude                      # Claude Code in the default box (session "claude")
 devboxen claude client2 api          # a second Claude in "client2" (session "claude-api")
+devboxen pull myproject/out          # a file or folder from the default box to ~/Downloads
+devboxen pull client2:work/a.zip .   # from the box "client2", into the current folder
 devboxen list                        # boxes of all hosts: status, memory, CPUs, sessions (* = attached)
 
 devboxen create client2              # a new box (options: --mem 4g --cpus 4)

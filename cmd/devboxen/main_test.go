@@ -61,3 +61,21 @@ func TestParseKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitPullSpec(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"a/b":           {"", "a/b"},
+		"client2:a/b":   {"client2", "a/b"},
+		"client2@aws:x": {"client2@aws", "x"},
+		"@aws:x":        {"@aws", "x"},
+		":x":            {"", "x"},
+		"./a:b":         {"", "./a:b"},
+		"/srv/a:b":      {"", "/srv/a:b"},
+		"My Dir:b":      {"", "My Dir:b"},
+	} {
+		box, p := splitPullSpec(in)
+		if box != want[0] || p != want[1] {
+			t.Errorf("splitPullSpec(%q) = %q, %q; want %q, %q", in, box, p, want[0], want[1])
+		}
+	}
+}

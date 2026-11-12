@@ -482,6 +482,7 @@ func (u *tui) mainItems() []menuItem {
 	return append(items,
 		menuItem{"+ New shell session…", "new-shell"},
 		menuItem{"+ New Claude Code session…", "new-claude"},
+		menuItem{"↓ Download files from a box…", "pull"},
 		menuItem{"  Boxes: create, start, stop, destroy…", "boxes"},
 		menuItem{"  Hosts: start, stop, costs, logins, GitHub tokens…", "hosts"},
 		menuItem{"  Refresh", "refresh"},
@@ -549,6 +550,8 @@ func (u *tui) do(choice string) error {
 		u.newSession(false)
 	case choice == "new-claude":
 		u.newSession(true)
+	case choice == "pull":
+		u.pull()
 	case choice == "boxes":
 		u.boxesMenu()
 	case choice == "hosts":
@@ -679,6 +682,33 @@ func (u *tui) newSession(claude bool) {
 		args = append(args, name)
 	}
 	u.pauseOnError(u.runCmd(args...))
+}
+
+// pull: a file or folder of a box to this computer.
+func (u *tui) pull() {
+	host, box, ok := u.pickBox("Download from which box?", true)
+	if !ok || !u.ensureRunning(host, box) {
+		return
+	}
+	remote, err := u.t.input("Path in the box (relative: from /home/dev):", "e.g. myproject/var/screenshots", func(s string) string {
+		if strings.TrimSpace(s) == "" || strings.TrimRight(s, "/") == "" {
+			return "a file or folder"
+		}
+		return ""
+	})
+	if err != nil {
+		return
+	}
+	dir, err := u.t.input("Into which folder here?", "empty: "+defaultPullDir(), func(string) string { return "" })
+	if err != nil {
+		return
+	}
+	args := []string{"pull", u.at(host, box) + ":" + strings.TrimSpace(remote)}
+	if dir != "" {
+		args = append(args, dir)
+	}
+	u.pauseOnError(u.runCmd(args...))
+	u.pause()
 }
 
 var memRE, cpusRE = regexp.MustCompile(`^[0-9]+[mg]$`), regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)

@@ -23,6 +23,7 @@ Boxes:
   devboxen shell [box[@host]] [session]   open a shell in a box (tmux session, default "shell")
   devboxen claude [box[@host]] [name]     Claude Code in a box (session "claude" or "claude-<name>")
   devboxen list [host]                    boxes and their sessions (all hosts if none given)
+  devboxen pull [box[@host]:]path [dir]   download a file or folder from a box (default: ~/Downloads)
   devboxen create box[@host] [--mem 8g] [--cpus 6]
   devboxen start box[@host]               start a stopped box
   devboxen stop box[@host]                stop a box (frees its memory; its data stays)
@@ -97,6 +98,8 @@ func run(args []string) error {
 		return a.cmdClaude(args)
 	case "list":
 		return a.cmdList(args)
+	case "pull":
+		return a.cmdPull(args)
 	case "create":
 		return a.cmdCreate(args)
 	case "start", "stop":
