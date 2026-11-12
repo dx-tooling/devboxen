@@ -164,6 +164,15 @@ address on its network (`docker inspect -f '{{range .NetworkSettings.Networks}}{
 tunnel to it from your laptop: `ssh -L 8000:<that address>:8000 root@<host>`. Or open it in
 the box's own browser (below), where `localhost` is the box.
 
+### Downloading with the menu
+
+`devboxen tui`, "Download files from a box": pick the box, then walk its file system from
+`/home/dev` (one folder is read at a time; nothing is changed in the box). Keys: arrows (or
+j/k) to move, → or Enter to open a folder, ← to go up, Space to mark a file or folder (marks
+stay while you walk), `a` to mark everything in the folder, `.` to show dot files, `/` to type
+a path to jump to, `d` to download (the marked ones, or the one under the cursor if none is
+marked), `q` to go back. Then it asks for the folder on your computer and runs `devboxen pull`.
+
 ## In the browser
 
 Every box can also be used from a browser, anywhere (password-protected): the boxes of all
@@ -367,12 +376,3 @@ collide with the host's `172.16.0.0/12` Docker networks.
 | `tests/devbox-hooks.test.sh` | their tests, run inside a box |
 | `seccomp.json`, `seccomp/generate.sh` | the seccomp profile and how it is made |
 | `../host/bin/devbox`, `../host/bin/devbox-admin` | host side: enter a box; manage boxes and the shared tokens (`ansible/host.yml`) |
-
-### Downloading with the menu
-
-`devboxen tui`, "Download files from a box": pick the box, then walk its file system from
-`/home/dev` (one folder is read at a time; nothing is changed in the box). Keys: arrows (or
-j/k) to move, → or Enter to open a folder, ← to go up, Space to mark a file or folder (marks
-stay while you walk), `a` to mark everything in the folder, `.` to show dot files, `/` to type
-a path to jump to, `d` to download (the marked ones, or the one under the cursor if none is
-marked), `q` to go back. Then it asks for the folder on your computer and runs `devboxen pull`.
