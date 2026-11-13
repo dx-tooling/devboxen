@@ -42,6 +42,8 @@ devboxen pull client2:work/a.zip .   # from the box "client2", into the current 
 devboxen pull main:a.txt main:b/ --to ~/Desktop   # several at once
 devboxen push report.pdf photos/     # to the box's /home/dev (--to [box:]dir: elsewhere)
 devboxen list                        # boxes of all hosts: status, memory, CPUs, sessions (* = attached)
+devboxen ports main                  # TCP listeners inside the box, including localhost ports
+devboxen tunnel main 32795           # forward to localhost:32795; Ctrl-C to stop
 
 devboxen create client2              # a new box (options: --mem 4g --cpus 4)
 devboxen stop client2                # stop it (frees its memory; everything stays)
@@ -160,10 +162,24 @@ from the install in `/opt/devboxen` with it. The image is `DEVBOXEN_BOX_IMAGE` f
 `/etc/devboxen/host.env` (a published one, pulled), or `devboxen-box:local`, built on the
 host from `box/`.
 
-**Dev servers** inside a box (e.g. a compose stack publishing `8000`): the box has an
-address on its network (`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' devbox-<name>`);
-tunnel to it from your laptop: `ssh -L 8000:<that address>:8000 root@<host>`. Or open it in
-the box's own browser (below), where `localhost` is the box.
+**Dev servers** inside a box (e.g. a compose stack publishing `32795`): use
+`devboxen tui` → **Ports** to list TCP listeners, their process or Docker container
+names, and choose one to forward, or run
+`devboxen ports main` and `devboxen tunnel main 32795` directly. The local listener is
+bound to `127.0.0.1` only; `--local-port 4000` changes its port if `32795` is occupied.
+Use the same port when the app redirects to an absolute `localhost` URL with its own port.
+For an IPv6-only listener, the TUI selects `::1` automatically; from the CLI, pass
+`--remote-addr ::1`.
+The tunnel reaches the listener inside the box, including one bound only to its loopback
+address. It passes TCP bytes unchanged, so `https://localhost:32795` works with TLS,
+HTTP/2 and WebSockets. Keep the tunnel command running while browsing; Ctrl-C closes it.
+
+For a certificate made with mkcert **inside the box**, your laptop's browser also needs
+to trust that box's mkcert root CA. The tunnel does not change or bypass certificate checks.
+You can copy the public CA certificate with
+`devboxen pull main:.local/share/mkcert/rootCA.pem ~/Downloads` and import that PEM into your
+computer's trusted roots. Never copy or trust `rootCA-key.pem`. If you prefer, use the
+box's own browser in devboxen-web; it already trusts the box's mkcert CA.
 
 ### Transferring files with the menu
 

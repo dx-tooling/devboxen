@@ -483,6 +483,7 @@ func (u *tui) mainItems() []menuItem {
 		menuItem{"+ New shell session…", "new-shell"},
 		menuItem{"+ New Claude Code session…", "new-claude"},
 		menuItem{"⇄ Files: download and upload…", "pull"},
+		menuItem{"⇥ Ports: list and tunnel to this computer…", "ports"},
 		menuItem{"  Boxes: create, start, stop, destroy…", "boxes"},
 		menuItem{"  Hosts: start, stop, costs, logins, GitHub tokens…", "hosts"},
 		menuItem{"  Refresh", "refresh"},
@@ -552,6 +553,8 @@ func (u *tui) do(choice string) error {
 		u.newSession(true)
 	case choice == "pull":
 		u.fileManager()
+	case choice == "ports":
+		u.portsMenu()
 	case choice == "boxes":
 		u.boxesMenu()
 	case choice == "hosts":
@@ -692,6 +695,64 @@ func (u *tui) fileManager() {
 	}
 	u.files(host, box)
 	u.stale = true
+}
+
+// portsMenu lists listeners in one box and opens an on-demand localhost tunnel.
+func (u *tui) portsMenu() {
+	host, box, ok := u.pickBox("Ports of which box?", true)
+	if !ok || !u.ensureRunning(host, box) {
+		return
+	}
+	t, err := u.a.parseTarget(u.at(host, box))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		u.pause()
+		return
+	}
+	fmt.Print("\x1b[2J\x1b[H" + c(cDim, "Looking at TCP listeners in "+u.at(host, box)+"…") + "\n")
+	ports, err := u.a.boxPorts(t)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		u.pause()
+		return
+	}
+	fmt.Print("\x1b[2J\x1b[H")
+	fmt.Println(c(cBold+";"+cAcc, "Ports in "+u.at(host, box)))
+	fmt.Println(c(cDim, "TCP is carried unchanged, including HTTPS and WebSockets."))
+	fmt.Println()
+	if len(ports) == 0 {
+		fmt.Println("No TCP listeners found in this box.")
+		u.pause()
+		return
+	}
+	var items []menuItem
+	for _, p := range ports {
+		items = append(items, menuItem{fmt.Sprintf("%d  %s  %s", p.port, p.bind, portOwner(p)), fmt.Sprintf("%d:%s", p.port, p.bind)})
+	}
+	items = append(items, menuItem{"← Back", "back"})
+	rows, _ := u.t.size()
+	v, _, err := u.t.choose("Select a port to forward to localhost:", items, rows-5, 0)
+	if err != nil || v == "back" {
+		return
+	}
+	port, bind, _ := strings.Cut(v, ":")
+	local, err := u.t.input("Local port:", "empty: "+port+" (same port)", func(s string) string {
+		if s == "" {
+			return ""
+		}
+		if _, err := parsePort(s); err != nil {
+			return "use 1–65535"
+		}
+		return ""
+	})
+	if err != nil {
+		return
+	}
+	args := []string{"tunnel", u.at(host, box), port, "--remote-addr", bind}
+	if local != "" {
+		args = append(args, "--local-port", local)
+	}
+	u.pauseOnError(u.runCmd(args...))
 }
 
 var memRE, cpusRE = regexp.MustCompile(`^[0-9]+[mg]$`), regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)

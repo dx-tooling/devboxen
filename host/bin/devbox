@@ -82,9 +82,10 @@ fi
 
 # A running Sysbox container can outlive an unexpected sysbox-fs/sysbox-mgr restart
 # (for example needrestart during unattended upgrades). Its tmux sessions stay alive,
-# but Docker can no longer exec a process in it. Probe the same TTY path first, then
-# enter its existing namespaces directly only for this specific failure.
-if probe_error="$(docker exec "${tty_flags[@]}" -u dev -w /home/dev "$container" true 2>&1)"; then
+# but Docker can no longer exec a process in it. Probe without stdin (a probe must not
+# consume the streamed command's first bytes), then enter its existing namespaces only
+# for this specific failure.
+if probe_error="$(docker exec -u dev -w /home/dev "$container" true 2>&1)"; then
   exec docker exec "${tty_flags[@]}" -u dev -w /home/dev "${env_flags[@]}" "$container" "$@"
 fi
 if [[ "$probe_error" != *"unsafe procfs detected"* ]]; then

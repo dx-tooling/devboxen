@@ -23,6 +23,9 @@ Boxes:
   devboxen shell [box[@host]] [session]   open a shell in a box (tmux session, default "shell")
   devboxen claude [box[@host]] [name]     Claude Code in a box (session "claude" or "claude-<name>")
   devboxen list [host]                    boxes and their sessions (all hosts if none given)
+  devboxen ports [box[@host]]             TCP listeners and their process/container names
+  devboxen tunnel [box[@host]] port [--local-port port] [--remote-addr IP]
+                                          forward a box port to localhost (HTTP or HTTPS)
   devboxen pull [box[@host]:]path [dir]   download a file or folder from a box (default: ~/Downloads)
   devboxen push path... [--to [box[@host]:]dir]
                                           upload files or folders to a box (default: /home/dev)
@@ -100,6 +103,10 @@ func run(args []string) error {
 		return a.cmdClaude(args)
 	case "list":
 		return a.cmdList(args)
+	case "ports":
+		return a.cmdPorts(args)
+	case "tunnel":
+		return a.cmdTunnel(args)
 	case "pull":
 		return a.cmdPull(args)
 	case "push":
