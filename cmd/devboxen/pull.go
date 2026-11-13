@@ -8,6 +8,8 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 )
 
@@ -72,6 +74,13 @@ func (a *app) cmdPull(args []string) error {
 		}
 		remotes = append(remotes, rp)
 	}
+	names := make([]string, len(remotes))
+	for i, rp := range remotes {
+		_, names[i] = splitRemote(rp)
+	}
+	if dup := duplicateNames(names); len(dup) > 0 {
+		return fmt.Errorf("sources have the same destination name: %s (copy them separately)", strings.Join(dup, ", "))
+	}
 
 	if opts["print"] == "true" {
 		for _, rp := range remotes {
@@ -113,6 +122,20 @@ func splitRemote(rp string) (dir, name string) {
 	return dir, name
 }
 
+// duplicateNames catches sources that would overwrite each other in one transfer.
+func duplicateNames(names []string) []string {
+	seen := map[string]bool{}
+	var dup []string
+	for _, name := range names {
+		if seen[name] && !slices.Contains(dup, name) {
+			dup = append(dup, name)
+		}
+		seen[name] = true
+	}
+	sort.Strings(dup)
+	return dup
+}
+
 // tarCommand: the command on the host that writes a tar of one file or folder to stdout.
 // -h: a link is followed, so what arrives is the content, not a link that points nowhere here.
 func (a *app) tarCommand(t target, dir, name string) []string {
@@ -120,7 +143,7 @@ func (a *app) tarCommand(t target, dir, name string) []string {
 	if t.box != "" {
 		remote = append(remote, "-b", t.box)
 	}
-	return append(remote, "--", "tar", "-h", "-C", dir, "-cf", "-", name)
+	return append(remote, "--", "tar", "-h", "-C", dir, "-cf", "-", "--", name)
 }
 
 func (a *app) pullOne(t target, remotePath, local string) error {

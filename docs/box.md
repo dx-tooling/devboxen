@@ -181,8 +181,9 @@ Looking changes nothing; a folder of the box is read when you open it.
 | `c` or F5 | copy the marked ones (or the one under the cursor) into the folder the other pane shows: a download from the box side, an upload from the computer side. It lists what happens, warns about files that exist there already, and runs `devboxen pull` or `push` (shown, so you have the command for next time) |
 | `q` | back to the menu |
 
-Links are followed, so what arrives is the content. Files of the same name are only replaced
-after you said yes (on the command line: `--force`).
+Links are followed, so what arrives is the content. Existing destination names require
+confirmation (on the command line: `--force`); files may be overwritten and folders merged.
+Sources with the same destination name must be copied separately.
 
 ## In the browser
 

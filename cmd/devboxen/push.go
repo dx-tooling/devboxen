@@ -45,6 +45,13 @@ func (a *app) cmdPush(args []string) error {
 		}
 		items = append(items, item{filepath.Dir(abs), filepath.Base(abs)})
 	}
+	names := make([]string, len(items))
+	for i, it := range items {
+		names[i] = it.name
+	}
+	if dup := duplicateNames(names); len(dup) > 0 {
+		return fmt.Errorf("sources have the same destination name: %s (copy them separately)", strings.Join(dup, ", "))
+	}
 
 	if opts["print"] == "true" {
 		for _, it := range items {
@@ -58,10 +65,6 @@ func (a *app) cmdPush(args []string) error {
 		return err
 	}
 	if opts["force"] != "true" {
-		names := make([]string, len(items))
-		for i, it := range items {
-			names[i] = it.name
-		}
 		exist, err := a.remoteExisting(t, remoteDir, names)
 		if err != nil {
 			return err
@@ -90,21 +93,21 @@ func (a *app) untarCommand(t target, remoteDir string) []string {
 
 // remoteExisting: which of the names are in the folder of the box already. A folder that
 // is not there is an error.
+const remoteExistingScript = `d="$1"; shift; [ -d "$d" ] || { echo "no such folder in the box: $d" >&2; exit 3; }; cd "$d" && for n; do if [ -e "$n" ] || [ -L "$n" ]; then printf '%s\0' "$n"; fi; done; true`
+
 func (a *app) remoteExisting(t target, dir string, names []string) ([]string, error) {
 	remote := []string{a.remoteDevbox}
 	if t.box != "" {
 		remote = append(remote, "-b", t.box)
 	}
-	remote = append(remote, "--", "sh", "-c",
-		`d="$1"; shift; [ -d "$d" ] || { echo "no such folder in the box: $d" >&2; exit 3; }; cd "$d" && for n; do [ -e "$n" ] && echo "$n"; done; true`,
-		"sh", dir)
+	remote = append(remote, "--", "sh", "-c", remoteExistingScript, "sh", dir)
 	remote = append(remote, names...)
 	out, err := runOutput(sshCmd(t.host, []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=10"}, remoteCommand(remote...)))
 	if err != nil {
 		return nil, err
 	}
 	var exist []string
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, l := range strings.Split(string(out), "\x00") {
 		if l != "" {
 			exist = append(exist, l)
 		}
@@ -114,7 +117,7 @@ func (a *app) remoteExisting(t target, dir string, names []string) ([]string, er
 
 func (a *app) pushOne(t target, dir, name, remoteDir string) error {
 	// COPYFILE_DISABLE: macOS tar adds no ._ files for extended attributes.
-	src := exec.Command("tar", "-h", "-C", dir, "-cf", "-", name)
+	src := exec.Command("tar", "-h", "-C", dir, "-cf", "-", "--", name)
 	src.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
 	src.Stderr = os.Stderr
 	dst := sshCmd(t.host, []string{"-o", "BatchMode=yes"}, remoteCommand(a.untarCommand(t, remoteDir)...))

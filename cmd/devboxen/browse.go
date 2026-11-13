@@ -241,16 +241,20 @@ func (b *browser) draw() {
 	}
 	p := b.pane[b.act]
 	var sum int64
+	here := 0
 	for _, e := range p.entries {
-		if p.marked[p.full(e)] && !e.dir {
-			sum += e.size
+		if p.marked[p.full(e)] {
+			here++
+			if !e.dir {
+				sum += e.size
+			}
 		}
 	}
-	status := c(cDim, fmt.Sprintf("%d marked here (files: %s; folders not counted)", len(p.marked), humanSize(sum)))
+	status := c(cDim, fmt.Sprintf("%d marked (%d in this folder; files here: %s)", len(p.marked), here, humanSize(sum)))
 	if b.msg != "" {
 		status = c(cWarn, b.msg)
 	}
-	to := "download ⇒"
+	to := "⇐ download"
 	if b.act == 0 {
 		to = "upload ⇒"
 	}
@@ -446,6 +450,14 @@ func (b *browser) copy() {
 		b.msg = "nothing to copy: mark with Space"
 		return
 	}
+	names := make([]string, len(paths))
+	for i, f := range paths {
+		names[i] = path.Base(f)
+	}
+	if dup := duplicateNames(names); len(dup) > 0 {
+		b.msg = "same destination name: " + strings.Join(dup, ", ") + " (copy separately)"
+		return
+	}
 	there := map[string]bool{}
 	for _, e := range other.entries {
 		there[e.name] = true
@@ -464,13 +476,25 @@ func (b *browser) copy() {
 	b.u.t.cooked()
 	fmt.Print("\x1b[2J\x1b[H")
 	fmt.Println(c(cBold, fmt.Sprintf("%s %d to %s:", verb, len(paths), other.dir)))
-	for _, f := range paths {
-		fmt.Println("  " + f)
+	for i, f := range paths {
+		if i == 10 {
+			fmt.Printf("  … and %d more\n", len(paths)-i)
+			break
+		}
+		fmt.Printf("  %q\n", f)
 	}
 	fmt.Println()
 	question := "Go on?"
 	if len(clash) > 0 {
-		question = fmt.Sprintf("%d of them exist there already (%s) and are replaced. Go on?", len(clash), strings.Join(clash, ", "))
+		fmt.Printf("%d destination names already exist:", len(clash))
+		for _, name := range clash[:min(3, len(clash))] {
+			fmt.Printf(" %q", name)
+		}
+		if len(clash) > 3 {
+			fmt.Printf(" +%d more", len(clash)-3)
+		}
+		fmt.Println()
+		question = "Overwrite files and merge folders?"
 	}
 	ok := b.u.t.yes(question)
 	if ok {
