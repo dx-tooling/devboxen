@@ -80,4 +80,24 @@ if $interactive; then
     \; set-option -g status-left-length 50
 fi
 
-exec docker exec "${tty_flags[@]}" -u dev -w /home/dev "${env_flags[@]}" "$container" "$@"
+# A running Sysbox container can outlive an unexpected sysbox-fs/sysbox-mgr restart
+# (for example needrestart during unattended upgrades). Its tmux sessions stay alive,
+# but Docker can no longer exec a process in it. Probe the same TTY path first, then
+# enter its existing namespaces directly only for this specific failure.
+if probe_error="$(docker exec "${tty_flags[@]}" -u dev -w /home/dev "$container" true 2>&1)"; then
+  exec docker exec "${tty_flags[@]}" -u dev -w /home/dev "${env_flags[@]}" "$container" "$@"
+fi
+if [[ "$probe_error" != *"unsafe procfs detected"* ]]; then
+  printf '%s\n' "$probe_error" >&2
+  exit 1
+fi
+pid="$(docker inspect -f '{{.State.Pid}}' "$container")"
+[[ "$pid" =~ ^[1-9][0-9]*$ ]] || die "the devbox $box has no running process"
+echo "devbox: Sysbox lost this running box; attaching through its existing namespaces" >&2
+ns_env=(HOME=/home/dev USER=dev LOGNAME=dev PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin)
+if $interactive; then
+  ns_env+=("TERM=${TERM:-xterm-256color}" "COLORTERM=${COLORTERM:-truecolor}")
+fi
+exec nsenter -t "$pid" -m -u -i -n -p -U --setuid 1000 --setgid 1000 \
+  --root="/proc/$pid/root" --wdns=/home/dev \
+  /usr/bin/env -i "${ns_env[@]}" "$@"

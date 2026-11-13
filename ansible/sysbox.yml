@@ -46,6 +46,17 @@
     - name: Docker has read its config before Sysbox is installed
       ansible.builtin.meta: flush_handlers
 
+    # needrestart can restart Sysbox during unattended library upgrades, orphaning
+    # running boxes. Their processes survive, but docker exec and new sessions fail.
+    - name: Keep needrestart from restarting Sysbox under running boxes
+      ansible.builtin.copy:
+        src: "{{ host_files }}/needrestart/99-sysbox.conf"
+        dest: /etc/needrestart/conf.d/99-sysbox.conf
+        owner: root
+        group: root
+        mode: "0644"
+        validate: "perl -c %s"
+
     - name: Sysbox package is downloaded (checksum-verified)
       ansible.builtin.get_url:
         url: "https://github.com/nestybox/sysbox/releases/download/v{{ sysbox_version }}/{{ sysbox_deb }}"
