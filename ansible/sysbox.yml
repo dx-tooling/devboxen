@@ -24,6 +24,9 @@
     sysbox_sha256: "9d6d5484f980d0a17f86c492c1262015c2afb66280bdb97215b79fde6a0261c5"
 
   handlers:
+    - name: load bwrap AppArmor profile
+      ansible.builtin.command: apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict
+
     - name: reload docker
       # SIGHUP: picks up `runtimes` without touching running containers. bip and
       # default-address-pools are only read at a restart; they equal Docker's built-in
@@ -33,6 +36,35 @@
         state: reloaded
 
   tasks:
+    # Ubuntu 24.04 restricts unprivileged user namespaces. Codex uses /usr/bin/bwrap
+    # from the box image; this profile permits only that binary to set up its sandbox.
+    # Keep kernel.apparmor_restrict_unprivileged_userns enabled for other processes.
+    - name: Ubuntu's Bubblewrap AppArmor profile is available
+      ansible.builtin.apt:
+        name: apparmor-profiles
+        state: present
+        update_cache: true
+        cache_valid_time: 86400
+
+    # A fresh host does not have the source until the apt task runs. In check mode
+    # Ansible reports that install but cannot inspect a file it has not created.
+    - name: Check for Ubuntu's Bubblewrap profile
+      ansible.builtin.stat:
+        path: /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+      register: bwrap_profile_source
+      check_mode: false
+
+    - name: Bubblewrap's user namespace profile is installed
+      ansible.builtin.copy:
+        src: /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+        dest: /etc/apparmor.d/bwrap-userns-restrict
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      notify: load bwrap AppArmor profile
+      when: bwrap_profile_source.stat.exists or not ansible_check_mode
+
     - name: Docker daemon config (validated with dockerd --validate)
       ansible.builtin.copy:
         src: "{{ host_files }}/docker/daemon.json"

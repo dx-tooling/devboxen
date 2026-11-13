@@ -7,7 +7,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg \
-        git openssh-client rsync jq make unzip zip less vim-tiny nano \
+        git openssh-client rsync jq make unzip zip less vim-tiny nano bubblewrap \
         procps iproute2 iputils-ping bind9-dnsutils nftables kmod sudo locales tzdata \
         tmux ncurses-term \
         docker.io docker-compose-v2 docker-buildx containerd \
