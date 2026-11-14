@@ -92,6 +92,9 @@
           COMPOSE_PROFILES=front{{ ',auto' if tls == 'auto' else '' }}
           COMPOSE_FILE=compose.yaml{{ ':compose.override.yaml' if devboxen_web_compose_override is defined else '' }}
           DEVBOXEN_WEB_DOMAIN={{ devboxen_web_domain | default('') }}
+          {% if tls == 'auto' %}
+          DEVBOXEN_WEB_ASK_LISTEN=:7701
+          {% endif %}
           DEVBOXEN_WEB_REMOTES={{ others | map('extract', hostvars, 'devboxen_host_name') | join(',') }}
           {% else %}
           COMPOSE_PROFILES=backend

@@ -188,6 +188,17 @@
         group: root
         mode: "0644"
 
+    # Read by devbox-expose in the boxes (as /run/devbox-shared/web-domain) for the address
+    # of an exposed port: https://<port>--<box>--<host>.<domain>.
+    - name: The browser interface's domain, for the boxes
+      ansible.builtin.copy:
+        content: "{{ devboxen_web_domain }}\n"
+        dest: /var/lib/devbox/shared/web-domain
+        owner: root
+        group: root
+        mode: "0644"
+      when: devboxen_web_domain | default('') | length > 0
+
     - name: The host's devboxen settings (read by devbox-admin)
       ansible.builtin.copy:
         dest: /etc/devboxen/host.env

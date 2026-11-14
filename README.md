@@ -35,6 +35,8 @@ organization. Use [Coder](https://github.com/coder/coder) for that.
   Chrome browser in the box, and you can watch what it does.
 - **Browser access.** VS Code, the terminal sessions and a Chrome that runs inside the box,
   so your app's `localhost` address works. Usable on a phone.
+- **Your app on your phone.** `devbox-expose 5173` in a box gives a dev server its own
+  password-protected HTTPS address; Claude can do it when you ask to see the app.
 - **GitHub without SSH keys.** git and gh use fine-grained tokens, one per account or
   organization. No key and no SSH agent ever enters a box.
 - **On-demand cloud server.** An optional OpenTofu module for an AWS EC2 instance that you

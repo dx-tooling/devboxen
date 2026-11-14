@@ -181,6 +181,40 @@ You can copy the public CA certificate with
 computer's trusted roots. Never copy or trust `rootCA-key.pem`. If you prefer, use the
 box's own browser in devboxen-web; it already trusts the box's mkcert CA.
 
+### Showing an app in the browser: `devbox-expose`
+
+A tunnel needs your laptop. To open an app that runs in a box from anywhere, a phone
+included, expose its port **from inside the box**:
+
+```bash
+devbox-expose 5173           # https://5173--main--vserver.devboxen.example.com/
+devbox-expose 8443 --tls     # the app itself speaks HTTPS (a mkcert certificate, say)
+devbox-expose                # the exposed ports, their addresses, whether something listens
+devbox-expose off 5173       # no longer exposed
+```
+
+Each port gets an address of its own, `https://<port>--<box>--<host>.<web domain>/`,
+behind devboxen-web's password (one login for the UI and every app; the overview links
+each box's exposed ports). Anything in the box can expose a port: you, a project script,
+Claude when you ask it to show you the app ([`AGENTS.md`](../box/AGENTS.md) tells it how).
+An exposed port stays exposed, across box restarts, until `devbox-expose off`; while nothing
+listens, its address answers with an error page. Box and host names containing `--` cannot
+be used in such an address.
+
+The app sees its public host name and `X-Forwarded-Proto: https` / `X-Forwarded-Host`, as
+behind any reverse proxy: a dev server that checks `Host` needs it allowed (Vite:
+`server.allowedHosts: ['.devboxen.example.com']`), a framework that builds absolute URLs
+needs to trust the proxy (Symfony: `TRUSTED_PROXIES`, `TRUSTED_HOSTS`). An app that
+redirects to `http://localhost:<port>` must be told its address. Requests from another
+origin that change something (a form posted from elsewhere, e.g. an identity provider's
+`form_post`) are refused, as everywhere in devboxen-web.
+
+How: `devbox-expose` only writes the registry `~/.config/devbox/exposed`.
+[`web-expose.js`](../box/web-expose.js), started by the entrypoint, keeps a socket
+`port-<n>.sock` in `/run/devbox-web` for each entry and relays its connections to the port
+on the box's loopback (`127.0.0.1`, else `::1`); for `--tls` it is the TLS client to the app.
+No network port. The front serves the sockets at those addresses ([web.md](web.md)).
+
 ### Transferring files with the menu
 
 `devboxen tui`, "Files: download and upload": pick the box, then two panes appear, this
@@ -258,6 +292,17 @@ noVNC's files and bridges the browser's WebSocket to a display, on `screen.sock`
 `watch.sock` in `/run/devbox-web` (Ubuntu's websockify 0.10 does not listen on a Unix
 socket). Logs: `/var/log/devbox-xvnc-{98,99}.log`, `/var/log/devbox-web-screen*.log`.
 
+
+## Notes for coding agents: `AGENTS.md`
+
+The image carries [`AGENTS.md`](../box/AGENTS.md) as `/etc/devbox/AGENTS.md`: what a box
+is, what works in it (Docker, the browser, git and gh over HTTPS, `devbox-expose`) and what
+not (persistence, no way to the host). The entrypoint links it as `~/AGENTS.md`, which
+agents read in every project under `/home/dev` (Claude Code too, in projects without a
+`CLAUDE.md` of their own), and imports it in Claude Code's user file `~/.claude/CLAUDE.md`
+(`@/etc/devbox/AGENTS.md`), which Claude reads in every project. Both only when missing
+(the import: once per home), so your own versions stay; the content comes with the image and
+stays current.
 
 ## Projects: the `.devbox` folder
 
@@ -394,6 +439,8 @@ collide with the host's `172.16.0.0/12` Docker networks.
 | `gh-wrapper.sh`, `git-credential-github.sh` | `gh` and git's credential helper in a box: the GitHub token of the repository's owner |
 | `claude-wrapper.sh` | `claude` in a box: logs in with the shared token, then runs Claude Code |
 | `web-attach.sh`, `web-api.js` | devboxen-web in the box: the browser terminal's tmux attach, the session list |
+| `web-expose.js`, `devbox-expose.sh` | the exposed ports: the relay (sockets to the ports), the command that keeps the registry |
+| `AGENTS.md` | notes for coding agents in the box (`/etc/devbox/AGENTS.md`) |
 | `web-vnc.js` | devboxen-web in the box: noVNC's files and the WebSocket to a screen (`:98`, `:99`), on a Unix socket |
 | `tmux.conf` | tmux for the persistent sessions (Esc without delay, mouse, OSC 52 clipboard) |
 | `entrypoint.sh` | MPTCP off + firewall in the devbox's namespace, the screens `:99` and `:98` (Xvnc), code-server + ttyd + session API + the box's Chrome and the screens' bridges (devboxen-web), the one-time Playwright MCP registration, the start hooks (in the background), then `exec dockerd` |

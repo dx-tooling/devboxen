@@ -37,6 +37,9 @@ type auth struct {
 	users map[string][]byte
 	dummy []byte // checked for unknown users, so timing does not tell users apart
 	key   []byte // signs session cookies
+	// The cookie's Domain when a request comes for it or a name under it (the exposed
+	// ports: one login for all); "": the request's host only.
+	domain string
 
 	mu       sync.Mutex
 	good     map[[32]byte]time.Time
@@ -53,12 +56,12 @@ const (
 	sessionFor    = 90 * 24 * time.Hour // renewed when half of it is gone
 )
 
-func newAuth(path, keyPath string) (*auth, error) {
+func newAuth(path, keyPath, domain string) (*auth, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	a := &auth{users: map[string][]byte{}, good: map[[32]byte]time.Time{}, failures: map[string][]time.Time{}}
+	a := &auth{users: map[string][]byte{}, good: map[[32]byte]time.Time{}, failures: map[string][]time.Time{}, domain: domain}
 	sc := bufio.NewScanner(bytes.NewReader(content))
 	for n := 1; sc.Scan(); n++ {
 		line := strings.TrimSpace(sc.Text())
@@ -111,13 +114,13 @@ func (a *auth) wrap(next http.Handler) http.Handler {
 		now := time.Now()
 		if until, ok := a.session(r); ok {
 			if until.Sub(now) < sessionFor/2 {
-				a.setSession(w, now)
+				a.setSession(w, r, now)
 			}
 			next.ServeHTTP(w, r)
 			return
 		}
 		if a.check(r) {
-			a.setSession(w, now)
+			a.setSession(w, r, now)
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -189,13 +192,18 @@ func (a *auth) session(r *http.Request) (time.Time, bool) {
 	return until, time.Now().Before(until)
 }
 
-func (a *auth) setSession(w http.ResponseWriter, now time.Time) {
+func (a *auth) setSession(w http.ResponseWriter, r *http.Request, now time.Time) {
 	until := now.Add(sessionFor)
 	raw := binary.BigEndian.AppendUint64(nil, uint64(until.Unix()))
 	raw = append(raw, a.sign(raw)...)
+	domain := ""
+	if a.domain != "" && underDomain(requestHost(r), a.domain) {
+		domain = a.domain
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    base64.RawURLEncoding.EncodeToString(raw),
+		Domain:   domain,
 		Path:     "/",
 		MaxAge:   int(sessionFor / time.Second),
 		Secure:   true,
@@ -226,6 +234,20 @@ func stripCredentials(h http.Header) {
 	h.Del("Cookie")
 	if len(kept) > 0 {
 		h.Set("Cookie", strings.Join(kept, "; "))
+	}
+}
+
+// dropSessionCookies takes an app's attempts to set the login cookie out of its response.
+func dropSessionCookies(h http.Header) {
+	var kept []string
+	for _, v := range h.Values("Set-Cookie") {
+		if !strings.HasPrefix(strings.TrimSpace(v), sessionCookie+"=") {
+			kept = append(kept, v)
+		}
+	}
+	h.Del("Set-Cookie")
+	for _, v := range kept {
+		h.Add("Set-Cookie", v)
 	}
 }
 

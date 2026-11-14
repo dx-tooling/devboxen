@@ -53,4 +53,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash -n box/*.sh host/bin/devbox host/bin/devbox-admin box/tests/*.sh box/seccomp/generate.sh
-      - run: node --check box/web-api.js && node --check box/web-vnc.js && node --check cmd/devboxen-web/ui/app.js
+      - run: node --check box/web-api.js && node --check box/web-vnc.js && node --check box/web-expose.js && node --check cmd/devboxen-web/ui/app.js

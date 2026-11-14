@@ -56,6 +56,16 @@ function sessionChip(host, box, s, isCurrent) {
   }, el("span", { class: "dot" + (s.attached ? " on" : "") }), s.name, label);
 }
 
+// An exposed port (devbox-expose in the box): a link to its own address, in a new tab.
+function portLink(e) {
+  const title = (e.listening ? `port ${e.port}` : `port ${e.port}: nothing listens yet`) +
+    (e.tls ? " (HTTPS inside the box)" : "");
+  const label = [el("span", { class: "dot" + (e.listening ? " on" : "") }), `:${e.port}`, el("span", { class: "cmd", text: "↗" })];
+  return e.url
+    ? el("a", { class: "chip port", href: e.url, target: "_blank", rel: "noopener", title }, label)
+    : el("span", { class: "chip port", title: title + " (no web domain set)" }, label);
+}
+
 function findBox(host, box) {
   const h = hosts.find((x) => x.name === host);
   return h && h.boxes.find((b) => b.name === box);
@@ -92,7 +102,8 @@ function renderOverview() {
           el("span", { class: "meta", text: meta })),
         b.up
           ? el("div", { class: "list" }, sessions.length ? sessions : el("span", { class: "meta", text: "no sessions yet" }))
-          : el("div", { class: "reason", text: b.reason || "not running" })));
+          : el("div", { class: "reason", text: b.reason || "not running" }),
+        b.up && b.exposed && b.exposed.length ? el("div", { class: "list ports" }, b.exposed.map(portLink)) : null));
     }
     return el("section", { class: "host" }, el("header", {}, el("h2", { text: h.name }), state), body);
   });

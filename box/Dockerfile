@@ -127,13 +127,21 @@ COPY devbox-hooks.sh /usr/local/bin/devbox-hooks
 COPY profile-devbox-hooks.sh /etc/profile.d/devbox-hooks.sh
 RUN chmod 0755 /usr/local/bin/devbox-hooks && chmod 0644 /etc/profile.d/devbox-hooks.sh
 COPY tmux.conf /etc/tmux.conf
-# devbox-web's pieces in the box: the terminal's attach command, the session API and the
-# screens' bridge (noVNC's files and the VNC displays, on Unix sockets).
+# devbox-web's pieces in the box: the terminal's attach command, the session API, the
+# screens' bridge (noVNC's files and the VNC displays, on Unix sockets) and the exposed ports'
+# relay.
+# devbox-expose and its relay show a port of the box at its own address (docs/box.md).
 COPY web-attach.sh /usr/local/bin/devbox-web-attach
+COPY devbox-expose.sh /usr/local/bin/devbox-expose
 COPY web-api.js /usr/local/lib/devbox/web-api.js
 COPY web-vnc.js /usr/local/lib/devbox/web-vnc.js
-RUN chmod 0755 /usr/local/bin/devbox-web-attach \
-    && chmod 0644 /usr/local/lib/devbox/web-api.js /usr/local/lib/devbox/web-vnc.js
+COPY web-expose.js /usr/local/lib/devbox/web-expose.js
+RUN chmod 0755 /usr/local/bin/devbox-web-attach /usr/local/bin/devbox-expose \
+    && chmod 0644 /usr/local/lib/devbox/web-api.js /usr/local/lib/devbox/web-vnc.js \
+        /usr/local/lib/devbox/web-expose.js
+# What a coding agent should know about the box; linked into dev's home by the entrypoint.
+COPY AGENTS.md /etc/devbox/AGENTS.md
+RUN chmod 0644 /etc/devbox/AGENTS.md
 COPY --from=host firewall/host-firewall.nft /etc/devbox-firewall.nft
 COPY entrypoint.sh /usr/local/sbin/devbox-entrypoint
 RUN chmod 0755 /usr/local/sbin/devbox-entrypoint

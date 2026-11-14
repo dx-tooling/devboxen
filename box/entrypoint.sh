@@ -53,6 +53,7 @@ xvnc 99 1920x1080 -AcceptSetDesktopSize=0
 #   screen  the browser: Google Chrome on :98 (its own profile in ~/.config/devbox-browser;
 #           closed, it starts again), shown through noVNC (web-vnc.js)
 #   watch   :99, Claude's screen, the same way
+#   port-N  the ports devbox-expose shows at their own address (web-expose.js)
 web=/run/devbox-web
 if mountpoint -q "$web"; then
   supervise web-code "$web/code.sock" code-server --auth none \
@@ -65,6 +66,7 @@ if mountpoint -q "$web"; then
     -t 'theme={"background":"#181818"}' \
     devbox-web-attach
   supervise web-api "$web/api.sock" node /usr/local/lib/devbox/web-api.js "$web/api.sock"
+  supervise web-expose "" node /usr/local/lib/devbox/web-expose.js "$web" /home/dev/.config/devbox/exposed
 
   xvnc 98 1600x1000
   supervise web-screen-wm "" env DISPLAY=:98 matchbox-window-manager -use_titlebar no
@@ -98,6 +100,29 @@ profile=/home/dev/.profile
 if [ -f "$profile" ] && ! grep -qF '/usr/local/lib/devbox/bin' "$profile"; then
   printf '\n# devbox: the claude wrapper (shared login token) before ~/.local/bin\nPATH="/usr/local/lib/devbox/bin:$PATH"\n' \
     >>"$profile"
+fi
+
+# What a coding agent should know about the box (/etc/devbox/AGENTS.md, from the image, so it
+# stays current). ~/AGENTS.md: read by agents working anywhere under /home/dev, and by Claude
+# Code in projects without a CLAUDE.md of their own. ~/.claude/CLAUDE.md (Claude's user
+# file, read in every project) imports it. Either is only created when missing; an existing
+# ~/.claude/CLAUDE.md gets the import once (a marker keeps a removal by the user removed).
+if [ ! -e /home/dev/AGENTS.md ] && [ ! -L /home/dev/AGENTS.md ]; then
+  su dev -s /bin/sh -c 'ln -s /etc/devbox/AGENTS.md /home/dev/AGENTS.md'
+fi
+marker=/home/dev/.config/devbox/agents-md-imported
+if [ ! -e "$marker" ]; then
+  su dev -s /bin/sh -c '
+    set -e
+    f=/home/dev/.claude/CLAUDE.md
+    mkdir -p /home/dev/.claude /home/dev/.config/devbox
+    if [ ! -e "$f" ] && [ ! -L "$f" ]; then
+      printf "%s\n" "@/etc/devbox/AGENTS.md" >"$f"
+    elif ! grep -qF "@/etc/devbox/AGENTS.md" "$f"; then
+      printf "\n%s\n" "@/etc/devbox/AGENTS.md" >>"$f"
+    fi
+    touch /home/dev/.config/devbox/agents-md-imported
+  ' || echo "devbox: could not add the devbox notes to ~/.claude/CLAUDE.md" >&2
 fi
 
 # The projects' start hooks (.devbox/on-start, see docs/box.md): as dev, in the background,

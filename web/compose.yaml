@@ -40,6 +40,10 @@ services:
       DEVBOX_WEB_HTPASSWD: /run/secrets/htpasswd
       DEVBOX_WEB_SESSION_KEY: /run/secrets/session-key
       DEVBOX_WEB_REMOTES: ${DEVBOXEN_WEB_REMOTES:-}
+      # The session cookie's domain, and the parent of the exposed ports' addresses.
+      DEVBOX_WEB_DOMAIN: ${DEVBOXEN_WEB_DOMAIN:-}
+      # Caddy's on-demand TLS question (profile auto only; see Caddyfile).
+      DEVBOX_WEB_ASK_LISTEN: ${DEVBOXEN_WEB_ASK_LISTEN:-}
     volumes:
       - /var/lib/devbox/web:/srv/devbox-web:ro
       - /var/lib/devbox/boxes:/srv/devbox-boxes:ro

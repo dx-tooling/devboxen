@@ -18,7 +18,7 @@ containers" unprivileged:
 | **No `--privileged`, no host Docker socket** | a box's `/var/run/docker.sock` is its own daemon; it cannot see or touch the host's containers |
 | **Virtualized `/proc`, `/sys`** | partly emulated by `sysbox-fs`; no host devices |
 | **Limits** | per box, default `cpus: 6`, `mem_limit: 8g` (`--mem`, `--cpus` at creation); `pids_limit: 16384`, `shm_size: 2g`. CPU limits may add up past the host's cores; memory limits that add up past the host's free memory risk the OOM killer picking something else when the boxes are busy. Stop boxes you are not using. |
-| **Not public, separate** | no published ports, on no network but its own (bridge `dbx-<name>`): boxes cannot reach each other; no box reaches the sshd of any devboxen host |
+| **Not public, separate** | no published ports, on no network but its own (bridge `dbx-<name>`): boxes cannot reach each other; no box reaches the sshd of any devboxen host. A port a box exposes (`devbox-expose`) is reachable only through devboxen-web, behind its password ([web.md](web.md#security)) |
 | **seccomp** | Docker's default profile minus MPTCP sockets, see below |
 
 It is **kernel-shared isolation**: a kernel exploit escapes it, as from any container. Only

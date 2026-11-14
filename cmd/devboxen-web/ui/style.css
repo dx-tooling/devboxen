@@ -168,6 +168,7 @@ button, input { font: inherit; color: inherit; }
 .box .meta { color: var(--muted); font-size: 12px; }
 .box .list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 .box .reason { color: var(--muted); margin-top: 4px; }
+.box .list.ports { margin-top: 4px; }
 
 /* The workspace */
 .workspace { flex: 1; display: flex; min-height: 0; }

@@ -13,6 +13,11 @@
 // Inside each box, code-server, ttyd and a small session API listen on Unix sockets in
 // /run/devbox-web, which is the host directory <DEVBOX_WEB_DIR>/boxes/<box>
 // (box/). Nothing of a box is reachable over the network.
+//
+// A box can also expose ports (devbox-expose: a socket port-<n>.sock each). The front serves
+// them at their own addresses, https://<port>--<box>--<host>.<DEVBOX_WEB_DOMAIN>, behind
+// the same password; the backends only on the path /h/<host>/b/<box>/port-<n>/, for the
+// front.
 package main
 
 import (
@@ -32,6 +37,8 @@ import (
 // Box and host names as devbox-admin and the inventory allow them.
 var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,10}$`)
 
+var domainRE = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]([a-z0-9-]*[a-z0-9])?$`)
+
 type config struct {
 	self       string   // this host's devboxen name
 	listen     string   // host:port
@@ -40,6 +47,9 @@ type config struct {
 	remotes    []string // other hosts, reached through webDir/hosts/<host>.sock
 	htpasswd   string   // empty: no password (only allowed on a loopback address)
 	sessionKey string   // signs the session cookies (with the password file); empty: made at start
+	front      bool     // the front (with a password); the backends have none
+	domain     string   // the front's domain: the session cookie's, and the exposed ports' parent
+	askListen  string   // the front: where Caddy asks whether to get a certificate ("": off)
 }
 
 func env(key, def string) string {
@@ -57,6 +67,12 @@ func loadConfig() (config, error) {
 		boxesDir:   env("DEVBOX_WEB_BOXES", "/srv/devbox-boxes"),
 		htpasswd:   env("DEVBOX_WEB_HTPASSWD", ""),
 		sessionKey: env("DEVBOX_WEB_SESSION_KEY", ""),
+		domain:     strings.ToLower(strings.TrimSuffix(env("DEVBOX_WEB_DOMAIN", ""), ".")),
+		askListen:  env("DEVBOX_WEB_ASK_LISTEN", ""),
+	}
+	c.front = c.htpasswd != ""
+	if c.domain != "" && !domainRE.MatchString(c.domain) {
+		return c, fmt.Errorf("invalid DEVBOX_WEB_DOMAIN %q", c.domain)
 	}
 	if c.self == "" {
 		// The host's name as ansible/host.yml writes it.
@@ -97,7 +113,7 @@ func main() {
 
 	var h http.Handler = s.routes()
 	if c.htpasswd != "" {
-		a, err := newAuth(c.htpasswd, c.sessionKey)
+		a, err := newAuth(c.htpasswd, c.sessionKey, c.domain)
 		if err != nil {
 			log.Fatalf("devbox-web: %v", err)
 		}
@@ -111,6 +127,10 @@ func main() {
 		ReadHeaderTimeout: 15 * time.Second,
 		IdleTimeout:       5 * time.Minute,
 		// No read/write timeouts: terminals and VS Code hold their WebSockets for hours.
+	}
+	if c.askListen != "" {
+		ask := &http.Server{Addr: c.askListen, Handler: http.HandlerFunc(s.handleTLSAsk), ReadHeaderTimeout: 5 * time.Second}
+		go func() { log.Fatal(ask.ListenAndServe()) }()
 	}
 	mode := "backend"
 	if c.htpasswd != "" {

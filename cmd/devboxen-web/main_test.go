@@ -191,7 +191,7 @@ func TestBasicAuth(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("s3cret"), bcrypt.MinCost)
 	f := filepath.Join(t.TempDir(), "htpasswd")
 	os.WriteFile(f, []byte("# comment\nalice:"+string(hash)+"\n"), 0o600)
-	a, err := newAuth(f, "")
+	a, err := newAuth(f, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestBasicAuth(t *testing.T) {
 	cookieOf := func(v string) *http.Request {
 		return &http.Request{Header: http.Header{"Cookie": {sessionCookie + "=" + v}}}
 	}
-	other, _ := newAuth(f, "")
+	other, _ := newAuth(f, "", "")
 	if _, ok := other.session(cookieOf(session.Value)); ok {
 		t.Error("a session from another key (a restart without a key file) was accepted")
 	}
@@ -268,31 +268,31 @@ func TestBasicAuth(t *testing.T) {
 	// With a key file: a restart keeps the sessions, a new password ends them.
 	keyFile := filepath.Join(t.TempDir(), "session-key")
 	os.WriteFile(keyFile, bytes.Repeat([]byte{7}, 32), 0o600)
-	first, err := newAuth(f, keyFile)
+	first, err := newAuth(f, keyFile, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	first.setSession(rec, time.Now())
+	first.setSession(rec, httptest.NewRequest(http.MethodGet, "/", nil), time.Now())
 	value := rec.Result().Cookies()[0].Value
-	restarted, _ := newAuth(f, keyFile)
+	restarted, _ := newAuth(f, keyFile, "")
 	if _, ok := restarted.session(cookieOf(value)); !ok {
 		t.Error("a restart with the same key file ended the session")
 	}
 	hash2, _ := bcrypt.GenerateFromPassword([]byte("new"), bcrypt.MinCost)
 	os.WriteFile(f, []byte("alice:"+string(hash2)+"\n"), 0o600)
-	newPassword, _ := newAuth(f, keyFile)
+	newPassword, _ := newAuth(f, keyFile, "")
 	if _, ok := newPassword.session(cookieOf(value)); ok {
 		t.Error("a new password kept the session")
 	}
 	os.WriteFile(keyFile, []byte("short"), 0o600)
-	if _, err := newAuth(f, keyFile); err == nil {
+	if _, err := newAuth(f, keyFile, ""); err == nil {
 		t.Error("a short key file was accepted")
 	}
 
 	// Only bcrypt entries.
 	os.WriteFile(f, []byte("alice:$apr1$FCHv7zyI$X6OqJeg8YH.n6y8T/KBj00\n"), 0o600)
-	if _, err := newAuth(f, ""); err == nil {
+	if _, err := newAuth(f, "", ""); err == nil {
 		t.Error("an apr1 entry was accepted")
 	}
 }

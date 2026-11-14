@@ -55,6 +55,10 @@ everything else. The boxes themselves: [box.md](box.md).
 **git, gh and Claude Code work from the browser alone**: GitHub goes over HTTPS with the
 tokens all boxes share, Claude Code with its shared login; nothing needs your laptop.
 
+- **Exposed ports** (`devbox-expose` in a box, [box.md](box.md#showing-an-app-in-the-browser-devbox-expose)):
+  listed under their box in the overview (● = something listens), each a link to the app at
+  its own address, `https://<port>--<box>--<host>.<domain>/`. Same login.
+
 ## How it fits together
 
 ```
@@ -74,6 +78,7 @@ browser ──https──> Caddy (TLS "auto") or your reverse proxy ("proxy")
 | front | the host in `devboxen_front`; [`web/compose.yaml`](../web/compose.yaml), profile `front` (+ `auto`: Caddy) | the UI ([`ui/`](../cmd/devboxen-web/ui/)), `/api/hosts`, and the proxy `/h/<host>/b/<box>/{code,term,screen,watch}/…` |
 | backend | every other host, profile `backend` | the same for its own boxes, on `127.0.0.1:7700` (host network), no password |
 | tunnel | front: `devbox-web-tunnel@<host>.service`; the other host: the user `devbox-web` | [`ansible/web.yml`](../ansible/web.yml) |
+| exposed ports | box: `port-<n>.sock` ([`web-expose.js`](../box/web-expose.js)); front: requests for `<port>--<box>--<host>.<domain>` ([`apps.go`](../cmd/devboxen-web/apps.go)) | its own boxes' sockets directly; another host's through its backend, as `/h/<host>/b/<box>/port-<n>/…`, a path only backends serve |
 
 **What the front knows about the other hosts** is only what their backends answer through
 the tunnels. It has no cloud credentials and calls no AWS API. For the overview it asks each
@@ -89,6 +94,10 @@ the page shows its boxes again.
 - **`auto`** (default): Caddy, in front of the front, gets a Let's Encrypt certificate for
   `devboxen_web_domain`. The domain must point at the front host, and its ports 80 and 443
   must be free and reachable.
+  For the exposed ports, a wildcard DNS record `*.<domain>` must point at the front host
+  too. Caddy gets their certificates on demand, one per address at its first request, and
+  only for a port that is exposed at that moment (it asks the front, on port 7701 of the
+  front's container, unpublished).
 - **`proxy`**: you already run a reverse proxy (Traefik, nginx, Caddy…) on the front host.
   devboxen-web then publishes nothing; your instance supplies a compose override
   (`devboxen_web_compose_override`) that puts the front on your proxy's network, with its
@@ -104,10 +113,18 @@ the page shows its boxes again.
         - traefik.http.routers.devboxen.rule=Host(`devboxen.example.com`)
         - traefik.http.routers.devboxen.tls.certresolver=letsencrypt
         - traefik.http.services.devboxen.loadbalancer.server.port=8080
+        # the exposed ports: every name under the domain, to the same service
+        - traefik.http.routers.devboxen-apps.rule=HostRegexp(`^[a-z0-9-]+\.devboxen\.example\.com$`)
+        - traefik.http.routers.devboxen-apps.tls.certresolver=letsencrypt
+        - traefik.http.routers.devboxen-apps.tls.domains[0].main=*.devboxen.example.com
+        - traefik.http.routers.devboxen-apps.service=devboxen
   networks:
     proxy:
       external: true
   ```
+
+  The exposed ports need a wildcard DNS record `*.<domain>` and a wildcard certificate for
+  it (DNS challenge), or leave the second router out and do without them.
 
 ## Security
 
@@ -133,6 +150,14 @@ A login here is a shell in every box (and, with the box's sudo, root there), so:
 - Nothing of a box is on a network: the front and the backend reach the box sockets through
   a read-only mount, refuse a symlink in place of a socket, and have no Docker socket; root
   in their container keeps only `CAP_DAC_OVERRIDE` (to connect to `dev`'s sockets).
+- **Exposed ports** are apps in development, on names under the front's domain, so they are
+  same-site with it and the session cookie (`Domain=<domain>`) covers them: one login. The
+  proxy strips the cookie and the password from what reaches an app, takes an app's own
+  attempts to set `devboxen_session` out of its responses, and the origin check refuses an
+  app's WebSockets and state changes towards the UI (or another app). The UI and the box
+  services carry `frame-ancestors 'self'`, so an app cannot frame them. The front never
+  serves a port on its own origin (`/h/…/port-<n>/` only exists on the backends, for the
+  front): there, an app's scripts could use the login to drive the terminals.
 - The tunnel key is on the front only (`/etc/devbox-web/`, root-only). On the other hosts its
   user can only forward to `127.0.0.1:7700`: `restrict,port-forwarding,permitopen=…` on the
   key, and a `Match User devbox-web` block (no shell, pty, socket or remote forwarding). The
@@ -144,6 +169,7 @@ A login here is a shell in every box (and, with the box's sudo, root there), so:
 |---|---|
 | `cmd/devboxen-web/main.go` | configuration, the origin check, socket dialing |
 | `cmd/devboxen-web/server.go` | routes, the proxy, the host and box list |
+| `cmd/devboxen-web/apps.go` | the exposed ports: their addresses, the proxying, Caddy's certificate question |
 | `cmd/devboxen-web/auth.go` | the password check (htpasswd, bcrypt), the session cookie |
 | `cmd/devboxen-web/ui/` | the page (no build step, no dependencies) |
 | `web/Dockerfile`, `web/compose.yaml`, `web/Caddyfile` | the image (a static binary), the profiles, HTTPS for `auto` |

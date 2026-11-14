@@ -29,6 +29,10 @@ var uiFiles embed.FS
 // noVNC. (The box's session API, api.sock, is only read by the server itself.)
 var boxServices = map[string]bool{"code": true, "term": true, "screen": true, "watch": true}
 
+// frameAncestors keeps the box's pages out of frames on other origins. The exposed ports'
+// pages are same-site (subdomains), and the browser sends the login along with them.
+const frameAncestors = "frame-ancestors 'self'"
+
 type server struct {
 	c         config
 	transport *http.Transport
@@ -40,6 +44,7 @@ type proxyTarget struct {
 	host    string // upstream key, see dial
 	path    string
 	rawPath string
+	app     bool // an exposed port at its own address (apps.go)
 }
 
 type targetKey struct{}
@@ -69,6 +74,16 @@ func newServer(c config) *server {
 				}
 			}
 		},
+		ModifyResponse: func(resp *http.Response) error {
+			t := resp.Request.Context().Value(targetKey{}).(proxyTarget)
+			if t.app {
+				// An app may not replace the login cookie (it shares the domain).
+				dropSessionCookies(resp.Header)
+			} else {
+				resp.Header.Add("Content-Security-Policy", frameAncestors)
+			}
+			return nil
+		},
 		Transport:     s.transport,
 		FlushInterval: -1,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -90,7 +105,7 @@ func (s *server) dial(ctx context.Context, _, addr string) (net.Conn, error) {
 	parts := strings.Split(key, ".")
 	switch {
 	case len(parts) == 3 && parts[0] == "box" && nameRE.MatchString(parts[1]) &&
-		(boxServices[parts[2]] || parts[2] == "api"):
+		(boxServices[parts[2]] || parts[2] == "api" || portService(parts[2])):
 		return dialUnix(ctx, filepath.Join(s.c.webDir, "boxes", parts[1], parts[2]+".sock"))
 	case len(parts) == 2 && parts[0] == "host" && s.isRemote(parts[1]):
 		return dialUnix(ctx, filepath.Join(s.c.webDir, "hosts", parts[1]+".sock"))
@@ -123,6 +138,10 @@ func (s *server) routes() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The boxes' paths go past the mux: it would clean them, and VS Code's paths are
 		// its own business.
+		if s.isAppHost(r) {
+			s.handleApp(w, r)
+			return
+		}
 		if strings.HasPrefix(r.URL.Path, "/h/") {
 			s.handleBox(w, r)
 			return
@@ -132,12 +151,13 @@ func (s *server) routes() http.Handler {
 }
 
 // handleBox proxies /h/<host>/b/<box>/<service>/<rest>: on this host to the box's socket,
-// as /<rest>; for another host, unchanged to that host's backend.
+// as /<rest>; for another host, unchanged to that host's backend. An exposed port
+// (port-<n>) only on a backend: the front serves those at their own addresses (apps.go).
 func (s *server) handleBox(w http.ResponseWriter, r *http.Request) {
 	escaped := r.URL.EscapedPath()
 	parts := strings.SplitN(escaped, "/", 7) // "", h, host, b, box, service, rest
 	if len(parts) < 6 || parts[3] != "b" || !nameRE.MatchString(parts[2]) ||
-		!nameRE.MatchString(parts[4]) || !boxServices[parts[5]] {
+		!nameRE.MatchString(parts[4]) || !(boxServices[parts[5]] || (!s.c.front && portService(parts[5]))) {
 		http.NotFound(w, r)
 		return
 	}
@@ -178,12 +198,13 @@ type session struct {
 }
 
 type boxInfo struct {
-	Name     string    `json:"name"`
-	Up       bool      `json:"up"`
-	Reason   string    `json:"reason,omitempty"`
-	Memory   string    `json:"memory,omitempty"`
-	CPUs     string    `json:"cpus,omitempty"`
-	Sessions []session `json:"sessions"`
+	Name     string     `json:"name"`
+	Up       bool       `json:"up"`
+	Reason   string     `json:"reason,omitempty"`
+	Memory   string     `json:"memory,omitempty"`
+	CPUs     string     `json:"cpus,omitempty"`
+	Sessions []session  `json:"sessions"`
+	Exposed  []exposure `json:"exposed"`
 }
 
 type hostInfo struct {
@@ -207,6 +228,9 @@ func (s *server) handleHosts(w http.ResponseWriter, r *http.Request) {
 		go func() { defer wg.Done(); hosts[i+1] = s.remoteHost(r.Context(), name) }()
 	}
 	wg.Wait()
+	for i := range hosts {
+		s.fillURLs(&hosts[i])
+	}
 	writeJSON(w, map[string]any{"self": s.c.self, "hosts": hosts})
 }
 
@@ -241,7 +265,7 @@ func (s *server) localHost(ctx context.Context) hostInfo {
 	for _, e := range entries {
 		name, ok := strings.CutSuffix(e.Name(), ".env")
 		if ok && nameRE.MatchString(name) {
-			h.Boxes = append(h.Boxes, boxInfo{Name: name, Sessions: []session{}})
+			h.Boxes = append(h.Boxes, boxInfo{Name: name, Sessions: []session{}, Exposed: []exposure{}})
 		}
 	}
 	sort.Slice(h.Boxes, func(i, j int) bool { return h.Boxes[i].Name < h.Boxes[j].Name })
@@ -286,4 +310,16 @@ func (s *server) fillBox(ctx context.Context, b *boxInfo) {
 		return
 	}
 	b.Up = true
+
+	// The exposed ports (none from a box whose image predates them).
+	req, _ = http.NewRequestWithContext(ctx, http.MethodGet, "http://box."+b.Name+".api/exposed", nil)
+	resp2, err := s.api.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp2.Body.Close()
+	var exposed []exposure
+	if resp2.StatusCode == http.StatusOK && json.NewDecoder(resp2.Body).Decode(&exposed) == nil && exposed != nil {
+		b.Exposed = exposed
+	}
 }
