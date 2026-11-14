@@ -165,7 +165,10 @@ host from `box/`.
 **Dev servers** inside a box (e.g. a compose stack publishing `32795`): use
 `devboxen tui` → **Ports** to list TCP listeners, their process or Docker container
 names, and choose one to forward, or run
-`devboxen ports main` and `devboxen tunnel main 32795` directly. The local listener is
+`devboxen ports main` and `devboxen tunnel main 32795` directly. For a container's port,
+the list shows the container's own port behind it (`container: app_nginx → 80 (HTTP)`):
+a published `80` speaks plain HTTP (`http://localhost:…`; `https://` there fails with
+`SSL_ERROR_RX_RECORD_TOO_LONG`), a published `443` HTTPS if the app serves it. The local listener is
 bound to `127.0.0.1` only; `--local-port 4000` changes its port if `32795` is occupied.
 Use the same port when the app redirects to an absolute `localhost` URL with its own port.
 For an IPv6-only listener, the TUI selects `::1` automatically; from the CLI, pass

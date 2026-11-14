@@ -40,10 +40,11 @@ LISTEN 0 128 127.0.0.1:43395 0.0.0.0:* users:(("codex",pid=8693,fd=33))`)
 	if len(got) != 3 {
 		t.Fatalf("got %+v", got)
 	}
-	if got[0].port != 32794 || !got[0].docker || got[0].owner != "luminor_meridian-external-agent-harness_nginx" {
+	if got[0].port != 32794 || !got[0].docker || got[0].owner != "luminor_meridian-external-agent-harness_nginx" ||
+		portOwner(got[0]) != "container: luminor_meridian-external-agent-harness_nginx → 80 (HTTP)" {
 		t.Errorf("NAT-only Docker binding: %+v", got[0])
 	}
-	if got[1].port != 32795 || portOwner(got[1]) != "container: luminor_meridian-external-agent-harness_nginx" {
+	if got[1].port != 32795 || portOwner(got[1]) != "container: luminor_meridian-external-agent-harness_nginx → 443 (HTTPS)" {
 		t.Errorf("docker-proxy owner: %+v", got[1])
 	}
 	if got[2].port != 43395 || portOwner(got[2]) != "process: codex" {

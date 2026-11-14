@@ -23,6 +23,7 @@ type boxPort struct {
 	bind   string
 	owner  string // process name, or the name of the container publishing this port
 	docker bool
+	target string // the container's own port behind a published one ("80", "443"), if known
 }
 
 var ssProcessRE = regexp.MustCompile(`users:\(\("([^"]+)"`)
@@ -95,7 +96,8 @@ func addDockerPorts(ports []boxPort, out string) []boxPort {
 			continue
 		}
 		for containerPort, published := range bindings {
-			if !strings.HasSuffix(containerPort, "/tcp") {
+			target, ok := strings.CutSuffix(containerPort, "/tcp")
+			if !ok {
 				continue
 			}
 			for _, b := range published {
@@ -109,10 +111,10 @@ func addDockerPorts(ports []boxPort, out string) []boxPort {
 				}
 				key := fmt.Sprintf("%d/%s", port, bind)
 				if i, ok := bySocket[key]; ok {
-					ports[i].owner, ports[i].docker = strings.TrimPrefix(name, "/"), true
+					ports[i].owner, ports[i].docker, ports[i].target = strings.TrimPrefix(name, "/"), true, target
 				} else {
 					bySocket[key] = len(ports)
-					ports = append(ports, boxPort{port: port, bind: bind, owner: strings.TrimPrefix(name, "/"), docker: true})
+					ports = append(ports, boxPort{port: port, bind: bind, owner: strings.TrimPrefix(name, "/"), docker: true, target: target})
 				}
 			}
 		}
@@ -188,7 +190,12 @@ func portOwner(p boxPort) string {
 		return "-"
 	}
 	if p.docker {
-		return "container: " + p.owner
+		s := "container: " + p.owner
+		if p.target != "" {
+			// The container's port tells HTTP from HTTPS where it is a well-known one.
+			s += " → " + p.target + map[string]string{"80": " (HTTP)", "443": " (HTTPS)"}[p.target]
+		}
+		return s
 	}
 	return "process: " + p.owner
 }
