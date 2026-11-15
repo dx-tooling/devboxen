@@ -147,6 +147,20 @@ define() { # DOMAIN DIR MEM_MIB CPUS CID [data disk]
     --memballoon "model=virtio,freePageReporting=on" \
     --graphics none --console pty,target_type=serial \
     --noautoconsole --quiet
+  drop_pool "$dir"
+}
+
+# virt-install registers the directory of a VM's disks as a libvirt storage pool, named
+# after the directory. devboxen does not use pools, and one whose directory is gone (the
+# builder's) fails at every libvirt start; so it goes again right away.
+drop_pool() { # DIR
+  local dir="$1" pool
+  for pool in $(virsh pool-list --all --name 2>/dev/null); do
+    if [ "$(virsh pool-dumpxml "$pool" 2>/dev/null | sed -n 's|.*<path>\(.*\)</path>.*|\1|p' | head -n1)" = "$dir" ]; then
+      virsh pool-destroy "$pool" >/dev/null 2>&1 || true
+      virsh pool-undefine "$pool" >/dev/null 2>&1 || true
+    fi
+  done
 }
 
 system_disk() { # DIR: a fresh system disk from the current base image
