@@ -82,7 +82,7 @@ function renderOverview() {
       body.push(el("p", { class: "hint" }, "No boxes. ", el("code", { text: `devboxen create main@${h.name}` })));
     }
     for (const b of h.boxes) {
-      const meta = [b.memory, b.cpus && `${b.cpus} CPUs`].filter(Boolean).join(" · ");
+      const meta = [b.memory, b.cpus && `${b.cpus} CPUs`, b.kind === "vm" && "VM"].filter(Boolean).join(" · ");
       const sessions = b.up
         ? b.sessions.map((s) => sessionChip(h.name, b.name, s, false))
         : [];

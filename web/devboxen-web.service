@@ -1,0 +1,40 @@
+# devboxen-web's backend on a host without Docker of its own (only VM boxes, docs/vm.md): the
+# same program as the backend container of compose.yaml, as a systemd service, with the same
+# limits. Its boxes on 127.0.0.1:7700, no password: only the front's SSH tunnel reaches it.
+# Installed by ansible/deploy.yml with the binary in /usr/local/lib/devboxen/devboxen-web.
+[Unit]
+Description=devboxen-web backend (this host's boxes, for the browser UI)
+After=network.target
+
+[Service]
+ExecStart=/usr/local/lib/devboxen/devboxen-web
+Environment=DEVBOX_WEB_LISTEN=127.0.0.1:7700
+Environment=DEVBOX_WEB_DIR=/var/lib/devbox/web
+Environment=DEVBOX_WEB_BOXES=/var/lib/devbox/boxes
+Restart=always
+RestartSec=2
+
+# Root only to connect to sockets of other owners, as in the container: every capability
+# but DAC_OVERRIDE is dropped, and it sees the host read-only.
+CapabilityBoundingSet=CAP_DAC_OVERRIDE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

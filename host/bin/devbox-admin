@@ -4,34 +4,50 @@
 # Code login token and the GitHub tokens they share. Installed to /usr/local/bin/devbox-admin by
 # ansible/host.yml; the laptop's `devboxen` CLI calls it over SSH. See docs/box.md.
 #
-#   devbox-admin create NAME [--mem 8g] [--cpus 6]
+#   devbox-admin create NAME [--vm | --container] [--mem 8g] [--cpus 6] [--disk 100g]
 #   devbox-admin list [--names]
 #   devbox-admin stop NAME | start NAME
-#   devbox-admin rebuild [NAME…]                # pull or build the image, recreate the boxes (all by default)
-#   devbox-admin destroy NAME --confirm NAME    # deletes the box AND its volumes
+#   devbox-admin rebuild [NAME…]                # recreate the boxes with the current image (all by default)
+#   devbox-admin destroy NAME --confirm NAME    # deletes the box AND its data
 #   devbox-admin token set < token | token status | token clear
 #   devbox-admin github set < owner=token lines | github status | github clear
+#   devbox-admin image                          # pull or build the box image only
 #
-# A box is the compose project devbox-NAME from the box/ directory of the devboxen install
-# (/opt/devboxen/box, put there by `devboxen deploy`), with its settings in
-# /var/lib/devbox/boxes/NAME.env. Boxes are runtime state like containers.
+# Two kinds of box (docs/vm.md):
+#
+#   container  the compose project devbox-NAME from the box/ directory of the devboxen install
+#              (/opt/devboxen/box, put there by `devboxen deploy`), on Sysbox
+#   vm         a virtual machine devbox-NAME (/usr/local/lib/devboxen/vm) with its own kernel,
+#              in which the same container box NAME runs; the default on a host with VM boxes
+#
+# Settings of either kind in /var/lib/devbox/boxes/NAME.env. Boxes are runtime state like
+# containers. What a host offers is in /etc/devboxen/host.env (written by ansible/host.yml):
+# DEVBOXEN_VMS=1 (VM boxes), DEVBOXEN_CONTAINERS=0 (no container boxes on the host itself).
 #
 # The image: $DEVBOXEN_BOX_IMAGE from /etc/devboxen/host.env, a published image (pulled), or
-# unset: devboxen-box:local, built on the host from box/.
+# unset: devboxen-box:local, built on the host from box/. A VM box has it in its base image.
 set -euo pipefail
 
 [ -r /etc/devboxen/host.env ] && . /etc/devboxen/host.env
 DEVBOX_DIR="${DEVBOX_DIR:-/opt/devboxen/box}"
 export DEVBOXEN_BOX_IMAGE="${DEVBOXEN_BOX_IMAGE:-devboxen-box:local}"
+HOST_VMS="${DEVBOXEN_VMS:-0}"
+HOST_CONTAINERS="${DEVBOXEN_CONTAINERS:-1}"
+VM=/usr/local/lib/devboxen/vm
 STATE=/var/lib/devbox
 DEV_UID=1000
 TOKEN_FILE="$STATE/shared/claude-oauth-token"
 GITHUB_FILE="$STATE/shared/github-tokens"
 DEFAULT_MEM=8g
 DEFAULT_CPUS=6
+DEFAULT_DISK=100g
+VM_MIN_MIB=4096
+VM_RESERVE_MIB=1024 # a VM's own kernel, Docker and Sysbox; the box inside gets the rest
+FIRST_CID=100
 
 die() { echo "devbox-admin: $*" >&2; exit 1; }
 say() { echo "==> $*"; }
+warn() { echo "devbox-admin: $*" >&2; }
 
 valid_name() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,10}$ ]]; }
 need_name() {
@@ -42,6 +58,18 @@ env_file() { echo "$STATE/boxes/$1.env"; }
 exists() { [ -f "$(env_file "$1")" ]; }
 need_box() { need_name "$1"; exists "$1" || die "no such devbox: $1 (devbox-admin list)"; }
 all_boxes() { ls "$STATE/boxes" 2>/dev/null | sed -n 's/\.env$//p' | sort; }
+setting() { sed -n "s/^$2=//p" "$(env_file "$1")" 2>/dev/null | head -n1; } # NAME KEY
+kind() { local k; k="$(setting "$1" DEVBOX_KIND)"; echo "${k:-container}"; }
+is_vm() { [ "$(kind "$1")" = vm ]; }
+has_docker() { command -v docker >/dev/null 2>&1; }
+
+# 8g, 6144m -> MiB
+mib() {
+  case "$1" in
+    *g) echo $((${1%g} * 1024)) ;;
+    *m) echo "${1%m}" ;;
+  esac
+}
 
 compose() { # compose NAME args…
   local name="$1"; shift
@@ -55,7 +83,7 @@ ensure_dirs() {
 
 # The host directory a box mounts, owned by UID 1000 (`dev` inside): its devbox-web sockets
 # (VS Code, terminal, sessions, screens; see ../../cmd/devboxen-web/). Before every start: a missing one
-# would be created by Docker, owned by root.
+# would be created by Docker, owned by root. For a VM box, the sockets forwarded from its VM.
 ensure_box_dirs() {
   ensure_dirs
   install -d -m 0755 -o "$DEV_UID" -g "$DEV_UID" "$STATE/web/boxes/$1"
@@ -72,20 +100,103 @@ build_image() {
   fi
 }
 
+# --- VM boxes --------------------------------------------------------------------------------
+
+# A command as root in the box's VM. Its arguments are joined into one shell command line.
+in_vm() { local name="$1"; shift; "$VM" ssh "$name" "$*"; }
+
+running_vm_boxes() {
+  local name
+  for name in $(all_boxes); do
+    is_vm "$name" && [ "$("$VM" state "$name")" = running ] && echo "$name"
+  done
+  return 0
+}
+
+next_cid() {
+  local max=$((FIRST_CID - 1)) name cid
+  for name in $(all_boxes); do
+    cid="$(setting "$name" DEVBOX_VM_CID)"
+    [[ "$cid" =~ ^[0-9]+$ ]] && [ "$cid" -gt "$max" ] && max="$cid"
+  done
+  echo $((max + 1))
+}
+
+# The host's Claude Code and GitHub tokens into a VM box (its own devbox-admin keeps them
+# there, as on a host). Copies, not a shared filesystem: nothing of the host is exposed to
+# the VM.
+push_shared() {
+  local name="$1"
+  if [ -s "$TOKEN_FILE" ]; then
+    in_vm "$name" devbox-admin token set <"$TOKEN_FILE" >/dev/null
+  else
+    in_vm "$name" devbox-admin token clear </dev/null >/dev/null
+  fi
+  if [ -s "$GITHUB_FILE" ]; then
+    in_vm "$name" devbox-admin github set <"$GITHUB_FILE" >/dev/null
+  else
+    in_vm "$name" devbox-admin github clear </dev/null >/dev/null
+  fi
+}
+
+push_shared_all() {
+  local name
+  for name in $(running_vm_boxes); do
+    push_shared "$name" || warn "could not update the tokens in devbox $name; they follow at its next start"
+  done
+}
+
+# The container box NAME inside its VM, with the VM's memory less what the VM needs itself.
+# Its volumes are on the VM's data disk, which must be mounted: else they would land on the
+# system disk and be lost at the next rebuild.
+create_in_vm() {
+  local name="$1" mem cpus
+  mem=$(($(mib "$(setting "$name" DEVBOX_MEM)") - VM_RESERVE_MIB))
+  cpus="$(setting "$name" DEVBOX_CPUS)"
+  in_vm "$name" "mountpoint -q /var/lib/docker/volumes || { echo 'the data disk is not mounted at /var/lib/docker/volumes' >&2; exit 1; }" \
+    "&& devbox-admin create $name --container --mem ${mem}m --cpus $cpus" </dev/null
+}
+
+web_forward() { # start|stop NAME
+  if [ "$1" = start ]; then
+    systemctl enable --now "devbox-vm-web@$2" >/dev/null 2>&1 || warn "the browser UI's forwarding for $2 did not start (systemctl status devbox-vm-web@$2)"
+  else
+    systemctl disable --now "devbox-vm-web@$2" >/dev/null 2>&1 || true
+  fi
+}
+
+# --- commands ----------------------------------------------------------------------------------
+
 cmd_create() {
   local name="${1:-}"; shift || true
   need_name "$name"
-  local mem="$DEFAULT_MEM" cpus="$DEFAULT_CPUS"
+  local kind="" mem="$DEFAULT_MEM" cpus="$DEFAULT_CPUS" disk="$DEFAULT_DISK"
   while [ $# -gt 0 ]; do
     case "$1" in
+      --vm) kind=vm; shift ;;
+      --container) kind=container; shift ;;
       --mem) mem="${2:?--mem needs a value, e.g. 8g}"; shift 2 ;;
       --cpus) cpus="${2:?--cpus needs a value, e.g. 4}"; shift 2 ;;
+      --disk) disk="${2:?--disk needs a value, e.g. 100g}"; shift 2 ;;
       *) die "unknown option: $1" ;;
     esac
   done
+  if [ -z "$kind" ]; then
+    kind=container
+    [ "$HOST_VMS" = 1 ] && kind=vm
+  fi
   [[ "$mem" =~ ^[0-9]+[mg]$ ]] || die "--mem like 4g or 6144m"
   [[ "$cpus" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--cpus like 4 or 2.5"
   exists "$name" && die "the devbox $name exists already"
+  case "$kind" in
+    vm) create_vm "$name" "$mem" "$cpus" "$disk" ;;
+    container) create_container "$name" "$mem" "$cpus" ;;
+  esac
+}
+
+create_container() {
+  local name="$1" mem="$2" cpus="$3"
+  [ "$HOST_CONTAINERS" = 1 ] && has_docker || die "this host runs only VM boxes (create it without --container)"
   docker container inspect "devbox-$name" >/dev/null 2>&1 && die "a container devbox-$name exists already"
 
   ensure_box_dirs "$name"
@@ -102,37 +213,111 @@ cmd_create() {
   say "devbox $name is ready: devbox -b $name"
 }
 
+create_vm() {
+  local name="$1" mem="$2" cpus="$3" disk="$4" cid
+  [ "$HOST_VMS" = 1 ] || die "this host has no VM boxes (they need /dev/kvm; see docs/vm.md)"
+  [[ "$disk" =~ ^[0-9]+[mg]$ ]] || die "--disk like 100g"
+  [ "$(mib "$mem")" -ge "$VM_MIN_MIB" ] || die "a VM box needs at least 4g of memory"
+  [[ "$cpus" =~ ^[0-9]+$ ]] || die "a VM box has whole CPUs (--cpus 4)"
+  [ -e "$STATE/vms/base/current.qcow2" ] || die "there is no base image for VM boxes yet: devboxen deploy sets the host up"
+  cid="$(next_cid)"
+
+  ensure_box_dirs "$name"
+  printf 'DEVBOX_NAME=%s\nDEVBOX_MEM=%s\nDEVBOX_CPUS=%s\nDEVBOX_KIND=vm\nDEVBOX_DISK=%s\nDEVBOX_VM_CID=%s\n' \
+    "$name" "$mem" "$cpus" "$disk" "$cid" >"$(env_file "$name")"
+  local failed="devbox $name is half made; remove it with: devbox-admin destroy $name --confirm $name"
+  "$VM" create "$name" "$mem" "$cpus" "$disk" "$cid" || die "$failed"
+  say "waiting for its system to start"
+  "$VM" wait "$name" 600 || die "$failed"
+  say "the box inside it"
+  create_in_vm "$name" || die "$failed"
+  push_shared "$name" || warn "the tokens did not reach devbox $name; devbox-admin token/github set again"
+  web_forward start "$name"
+  say "devbox $name is ready (a VM: memory $mem, CPUs $cpus, disk $disk): devbox -b $name"
+}
+
 cmd_list() {
   if [ "${1:-}" = --names ]; then all_boxes; return; fi
-  local name status sessions mem cpus
-  printf '%-12s %-9s %-6s %-5s %s\n' BOX STATUS MEMORY CPUS SESSIONS
+  local name status sessions mem cpus kind
+  printf '%-12s %-9s %-6s %-5s %-9s %s\n' BOX STATUS MEMORY CPUS KIND SESSIONS
   for name in $(all_boxes); do
-    status="$(docker inspect -f '{{.State.Status}}' "devbox-$name" 2>/dev/null || echo missing)"
-    mem="$(sed -n 's/^DEVBOX_MEM=//p' "$(env_file "$name")")"
-    cpus="$(sed -n 's/^DEVBOX_CPUS=//p' "$(env_file "$name")")"
+    kind="$(kind "$name")"
+    mem="$(setting "$name" DEVBOX_MEM)"
+    cpus="$(setting "$name" DEVBOX_CPUS)"
     sessions="-"
-    if [ "$status" = running ]; then
-      sessions="$(docker exec -u dev "devbox-$name" tmux list-sessions \
-        -F '#S#{?session_attached,*,}' 2>/dev/null | tr '\n' ' ' || true)"
-      [ -n "$sessions" ] || sessions="-"
+    if [ "$kind" = vm ]; then
+      case "$("$VM" state "$name")" in
+        running) status=running ;;
+        stopped) status=exited ;;
+        *) status=missing ;;
+      esac
+      if [ "$status" = running ]; then
+        sessions="$(timeout 10 "$VM" ssh "$name" "docker exec -u dev devbox-$name tmux list-sessions -F '#S#{?session_attached,*,}'" \
+          </dev/null 2>/dev/null | tr '\n' ' ' || true)"
+      fi
+    else
+      status="$(docker inspect -f '{{.State.Status}}' "devbox-$name" 2>/dev/null || echo missing)"
+      if [ "$status" = running ]; then
+        sessions="$(docker exec -u dev "devbox-$name" tmux list-sessions \
+          -F '#S#{?session_attached,*,}' 2>/dev/null | tr '\n' ' ' || true)"
+      fi
     fi
-    printf '%-12s %-9s %-6s %-5s %s\n' "$name" "$status" "$mem" "$cpus" "$sessions"
+    [ -n "$sessions" ] || sessions="-"
+    printf '%-12s %-9s %-6s %-5s %-9s %s\n' "$name" "$status" "$mem" "$cpus" "$kind" "$sessions"
   done
   echo "(* = a terminal is attached)"
 }
 
-cmd_stop() { need_box "${1:-}"; compose "$1" stop; }
-cmd_start() { need_box "${1:-}"; ensure_box_dirs "$1"; compose "$1" up -d --no-build; }
+cmd_stop() {
+  need_box "${1:-}"
+  if is_vm "$1"; then
+    web_forward stop "$1"
+    "$VM" stop "$1"
+  else
+    compose "$1" stop
+  fi
+}
 
+cmd_start() {
+  need_box "${1:-}"
+  ensure_box_dirs "$1"
+  if is_vm "$1"; then
+    "$VM" start "$1"
+    "$VM" wait "$1" 300
+    push_shared "$1" || warn "the tokens did not reach devbox $1"
+    in_vm "$1" devbox-admin start "$1" </dev/null >/dev/null
+    web_forward start "$1"
+  else
+    compose "$1" up -d --no-build
+  fi
+}
+
+# A VM box gets a fresh system disk from the current base image (devboxen deploy makes it), so
+# a new box image, Docker and Ubuntu in one; its data disk with the volumes stays.
 cmd_rebuild() {
-  local names=("$@") name
+  local names=("$@") name containers=() vms=()
   [ ${#names[@]} -gt 0 ] || mapfile -t names < <(all_boxes)
-  for name in "${names[@]}"; do need_box "$name"; done
-  build_image
   for name in "${names[@]}"; do
-    say "recreating devbox $name if its image or settings changed (its tmux sessions end; volumes stay)"
+    need_box "$name"
+    if is_vm "$name"; then vms+=("$name"); else containers+=("$name"); fi
+  done
+  if [ ${#containers[@]} -gt 0 ]; then
+    build_image
+    for name in "${containers[@]}"; do
+      say "recreating devbox $name if its image or settings changed (its tmux sessions end; volumes stay)"
+      ensure_box_dirs "$name"
+      compose "$name" up -d --no-build
+    done
+  fi
+  for name in "${vms[@]}"; do
+    say "rebuilding the VM of devbox $name from the current base image (its sessions end; its data stays)"
+    web_forward stop "$name"
     ensure_box_dirs "$name"
-    compose "$name" up -d --no-build
+    "$VM" reimage "$name"
+    "$VM" wait "$name" 600
+    create_in_vm "$name"
+    push_shared "$name" || warn "the tokens did not reach devbox $name"
+    web_forward start "$name"
   done
 }
 
@@ -140,12 +325,23 @@ cmd_destroy() {
   local name="${1:-}"
   need_box "$name"
   [ "${2:-}" = --confirm ] && [ "${3:-}" = "$name" ] ||
-    die "this deletes devbox $name with its volumes (checkouts, inner Docker data): repeat the name: devbox-admin destroy $name --confirm $name"
-  say "destroying devbox $name and its volumes"
-  compose "$name" down --volumes --remove-orphans
+    die "this deletes devbox $name with its data (checkouts, inner Docker data): repeat the name: devbox-admin destroy $name --confirm $name"
+  if is_vm "$name"; then
+    say "destroying devbox $name: its VM and both disks"
+    web_forward stop "$name"
+    "$VM" destroy "$name"
+  else
+    say "destroying devbox $name and its volumes"
+    compose "$name" down --volumes --remove-orphans
+  fi
   rm -f "$(env_file "$name")"
   rm -rf "${STATE:?}/web/boxes/$name"
   say "devbox $name is gone"
+}
+
+cmd_image() {
+  has_docker || die "no Docker on this host (its boxes are VMs: the box image is in their base image)"
+  build_image
 }
 
 cmd_token() {
@@ -161,6 +357,7 @@ cmd_token() {
       chmod 0400 "$TOKEN_FILE.new"
       mv -f "$TOKEN_FILE.new" "$TOKEN_FILE"
       say "token stored; every devbox's next \`claude\` uses it"
+      push_shared_all
       ;;
     status)
       if [ -s "$TOKEN_FILE" ]; then
@@ -169,7 +366,7 @@ cmd_token() {
         echo "not set (each box uses its own Claude Code login)"
       fi
       ;;
-    clear) rm -f "$TOKEN_FILE"; say "token removed" ;;
+    clear) rm -f "$TOKEN_FILE"; say "token removed"; push_shared_all ;;
     *) die "usage: devbox-admin token set|status|clear" ;;
   esac
 }
@@ -195,6 +392,7 @@ cmd_github() {
       chmod 0400 "$GITHUB_FILE.new"
       mv -f "$GITHUB_FILE.new" "$GITHUB_FILE"
       say "$n GitHub tokens stored ($(cut -d= -f1 "$GITHUB_FILE" | paste -sd, -)); every box's next git or gh uses them"
+      push_shared_all
       ;;
     status)
       if [ -s "$GITHUB_FILE" ]; then
@@ -203,7 +401,7 @@ cmd_github() {
         echo "not set (git and gh in the boxes are not logged in to GitHub)"
       fi
       ;;
-    clear) rm -f "$GITHUB_FILE"; say "GitHub tokens removed" ;;
+    clear) rm -f "$GITHUB_FILE"; say "GitHub tokens removed"; push_shared_all ;;
     *) die "usage: devbox-admin github set|status|clear" ;;
   esac
 }
@@ -218,5 +416,6 @@ case "$cmd" in
   destroy) cmd_destroy "$@" ;;
   token) cmd_token "$@" ;;
   github) cmd_github "$@" ;;
-  *) sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  image) cmd_image ;;
+  *) sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

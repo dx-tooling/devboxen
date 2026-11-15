@@ -43,6 +43,17 @@ table inet host_firewall {
         iifname "dbx-*" tcp dport 22 counter reject with tcp reset
     }
 
+    # VM boxes (docs/vm.md) are on the bridge dbv0 (libvirt's network "devboxen", made by
+    # ansible/vm.yml). Of the host, they reach DHCP and DNS (libvirt's dnsmasq) and nothing
+    # else: no sshd, no other service, on none of the host's addresses. The host reaches them
+    # over vsock, not over this network. (A host without VM boxes has no such bridge.)
+    chain devbox_vm_to_host {
+        type filter hook input priority filter; policy accept;
+        iifname "dbv*" udp dport { 53, 67 } accept
+        iifname "dbv*" tcp dport 53 accept
+        iifname "dbv*" counter reject with icmpx admin-prohibited
+    }
+
     # The same through the public addresses of all devboxen hosts (filled in by
     # /etc/host-firewall-hosts.nft). On EC2 the Elastic IP is on none of the host's
     # interfaces (it lives at the Internet Gateway), so a box's connection to it is forwarded,
@@ -54,6 +65,7 @@ table inet host_firewall {
     chain devbox_no_devbox_host_ssh {
         type filter hook forward priority filter; policy accept;
         iifname "dbx-*" ip daddr @devboxen_hosts tcp dport 22 counter reject with tcp reset
+        iifname "dbv*" ip daddr @devboxen_hosts tcp dport 22 counter reject with tcp reset
     }
 }
 

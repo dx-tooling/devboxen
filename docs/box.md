@@ -4,7 +4,9 @@ A box is a long-lived container to develop in: for projects that are built as a 
 even in development, and for Claude Code working on them. Each box runs **its own Docker
 daemon**, so `docker compose up` inside it works as on any workstation, at native speed (it
 is a container, not a VM), while staying isolated from the host, from whatever else runs on
-it, and from the other boxes ([security.md](security.md)).
+it, and from the other boxes ([security.md](security.md)). On a host with hardware
+virtualization, each box runs in a **virtual machine** of its own by default, with its own
+kernel: [vm.md](vm.md).
 
 A host can have **several boxes** (e.g. one per client or project), created, listed,
 entered and destroyed from your laptop. A box is the compose project `devbox-<name>` from
@@ -45,7 +47,8 @@ devboxen list                        # boxes of all hosts: status, memory, CPUs,
 devboxen ports main                  # TCP listeners inside the box, including localhost ports
 devboxen tunnel main 32795           # forward to localhost:32795; Ctrl-C to stop
 
-devboxen create client2              # a new box (options: --mem 4g --cpus 4)
+devboxen create client2              # a new box (options: --mem 4g --cpus 4; a VM box: --disk 100g)
+devboxen create tools --container    # a container box on a host whose boxes are VMs by default
 devboxen stop client2                # stop it (frees its memory; everything stays)
 devboxen start client2
 devboxen destroy client2             # type the name to confirm; deletes its data
@@ -144,7 +147,7 @@ by [`ansible/host.yml`](../ansible/host.yml)); the CLI calls them over SSH:
 
 ```bash
 devbox [-b BOX] [-s SESSION] [command]       # e.g. devbox -b client2 -s work, devbox claude
-devbox-admin create NAME [--mem 8g] [--cpus 6]
+devbox-admin create NAME [--vm | --container] [--mem 8g] [--cpus 6] [--disk 100g]
 devbox-admin list | stop NAME | start NAME | rebuild [NAME…]
 devbox-admin destroy NAME --confirm NAME
 devbox-admin token set < token | token status | token clear
@@ -157,7 +160,8 @@ from the host are owned by UID 1000 (`dev` inside, through Sysbox's ID-mapped mo
 host, UID 1000 is the shell-less `sysbox` account the Sysbox installer added).
 
 `devbox-admin` keeps each box's settings in `/var/lib/devbox/boxes/<name>.env`
-(`DEVBOX_NAME`, `DEVBOX_MEM`, `DEVBOX_CPUS`) and runs [`box/docker-compose.yaml`](../box/docker-compose.yaml)
+(`DEVBOX_NAME`, `DEVBOX_MEM`, `DEVBOX_CPUS`; for a VM box also `DEVBOX_KIND=vm`,
+`DEVBOX_DISK`, `DEVBOX_VM_CID`) and runs [`box/docker-compose.yaml`](../box/docker-compose.yaml)
 from the install in `/opt/devboxen` with it. The image is `DEVBOXEN_BOX_IMAGE` from
 `/etc/devboxen/host.env` (a published one, pulled), or `devboxen-box:local`, built on the
 host from `box/`.

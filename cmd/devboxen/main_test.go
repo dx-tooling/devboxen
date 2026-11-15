@@ -115,3 +115,26 @@ func TestParseKeysTabF5(t *testing.T) {
 		t.Errorf("got %+v", got)
 	}
 }
+
+func TestParseList(t *testing.T) {
+	// A host from before VM boxes: no KIND column.
+	old := "BOX          STATUS    MEMORY CPUS  SESSIONS\n" +
+		"main         running   8g     6     claude* shell \n" +
+		"spare        exited    4g     2     -\n" +
+		"(* = a terminal is attached)\n"
+	rows := parseList("vps", "fixed", old)
+	if len(rows) != 2 || rows[0].boxKind != "container" || strings.Join(rows[0].sessions, ",") != "claude*,shell" ||
+		rows[1].status != "exited" || len(rows[1].sessions) != 0 {
+		t.Errorf("old list: %+v", rows)
+	}
+
+	now := "BOX          STATUS    MEMORY CPUS  KIND      SESSIONS\n" +
+		"main         running   64g    12    vm        shell* \n" +
+		"tools        running   8g     6     container -\n" +
+		"(* = a terminal is attached)\n"
+	rows = parseList("kvm", "fixed", now)
+	if len(rows) != 2 || rows[0].boxKind != "vm" || rows[0].mem != "64g" || strings.Join(rows[0].sessions, ",") != "shell*" ||
+		rows[1].boxKind != "container" || len(rows[1].sessions) != 0 {
+		t.Errorf("list with KIND: %+v", rows)
+	}
+}

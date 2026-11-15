@@ -86,9 +86,11 @@ func (a *app) cmdDeploy(args []string) error {
 
 	playArgs := []string{"-i", inv, filepath.Join(src, "ansible", "site.yml")}
 	if len(pos) > 0 {
-		names := make([]string, len(pos))
-		for i, n := range pos {
-			names[i] = strings.TrimPrefix(n, "@")
+		var names []string
+		for _, n := range pos {
+			n = strings.TrimPrefix(n, "@")
+			// and the builder of its VM boxes' base image, if this run needs one (ansible/vm.yml)
+			names = append(names, n, n+"-vmbase")
 		}
 		playArgs = append(playArgs, "--limit", strings.Join(names, ","))
 	}

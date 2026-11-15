@@ -1,10 +1,12 @@
 ---
 # The foundation of every devboxen host: Ubuntu, a few base packages and Docker (Ubuntu's
-# build, not docker-ce). Idempotent; on a provisioned host it reports no changes.
+# build, not docker-ce). Idempotent; on a provisioned host it reports no changes. A host with
+# devboxen_containers false (only VM boxes) gets no Docker; the builder of the VM boxes' base
+# image (devboxen_vm_guests, see vm.yml) does.
 #
 #   ansible-playbook -i <inventory> base.yml --check --diff
 - name: Host foundation
-  hosts: devboxen_hosts
+  hosts: devboxen_hosts:devboxen_vm_guests
   gather_facts: true
   become: false # devboxen connects as root
 
@@ -19,7 +21,7 @@
           {{ ansible_facts['distribution'] | default('unknown') }} on {{ ansible_facts['architecture'] | default('unknown') }}
         quiet: true
 
-    - name: Base packages and the Docker engine are installed
+    - name: Base packages are installed
       ansible.builtin.apt:
         name:
           - ca-certificates
@@ -29,15 +31,22 @@
           - rsync
           - jq
           - nftables
+        state: present
+        update_cache: true
+        cache_valid_time: 86400
+
+    - name: Docker engine is installed
+      ansible.builtin.apt:
+        name:
           - docker.io # Docker engine (Ubuntu's build)
           - docker-compose-v2 # the `docker compose` plugin
           - containerd
         state: present
-        update_cache: true
-        cache_valid_time: 86400
+      when: devboxen_containers | default(true) | bool
 
     - name: Docker engine is enabled and running
       ansible.builtin.systemd_service:
         name: docker
         enabled: true
         state: started
+      when: devboxen_containers | default(true) | bool

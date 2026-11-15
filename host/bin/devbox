@@ -21,11 +21,17 @@
 #
 # No SSH agent goes into a box: GitHub is reached over HTTPS with the boxes' tokens
 # (docs/box.md, "GitHub").
+#
+# A VM box (docs/vm.md): the same command, one hop further, by the devbox command in the
+# box's VM, which the host reaches over vsock (/usr/local/lib/devboxen/vm ssh).
 set -euo pipefail
 
 die() { echo "devbox: $*" >&2; exit 1; }
 
-boxes() { docker ps -a --filter label=devbox.name --format '{{.Label "devbox.name"}}' | sort; }
+# devbox-admin's settings files: the boxes of both kinds (a host with only VM boxes has no
+# Docker of its own).
+boxes() { ls /var/lib/devbox/boxes 2>/dev/null | sed -n 's/\.env$//p' | sort; }
+kind() { sed -n 's/^DEVBOX_KIND=//p' "/var/lib/devbox/boxes/$1.env" 2>/dev/null | head -n1; }
 
 box="" session=""
 while [ $# -gt 0 ]; do
@@ -51,6 +57,22 @@ if [ -z "$box" ]; then
   fi
 fi
 [[ "$box" =~ ^[a-z0-9][a-z0-9-]{0,10}$ ]] || die "no such devbox: $box"
+
+if [ "$(kind "$box")" = vm ]; then
+  [ "$(/usr/local/lib/devboxen/vm state "$box")" = running ] ||
+    die "the devbox $box is not running (devbox-admin list)"
+  # The command line for the VM's devbox, each word quoted for its shell.
+  remote="devbox -b $(printf '%q' "$box")"
+  [ -z "$session" ] || remote+=" -s $(printf '%q' "$session")"
+  remote+=" --"
+  for arg in "$@"; do remote+=" $(printf '%q' "$arg")"; done
+  if [ -t 0 ] && [ -t 1 ]; then
+    exec /usr/local/lib/devboxen/vm ssh -t "$box" \
+      "TERM=$(printf '%q' "${TERM:-xterm-256color}") COLORTERM=$(printf '%q' "${COLORTERM:-truecolor}") $remote"
+  fi
+  exec /usr/local/lib/devboxen/vm ssh -T "$box" "$remote"
+fi
+
 container="devbox-$box"
 [ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" = true ] ||
   die "the devbox $box is not running (devbox-admin list)"
@@ -85,7 +107,7 @@ fi
 # but Docker can no longer exec a process in it. Probe without stdin (a probe must not
 # consume the streamed command's first bytes), then enter its existing namespaces only
 # for this specific failure.
-if probe_error="$(docker exec -u dev -w /home/dev "$container" true 2>&1)"; then
+if probe_error="$(docker exec -u dev -w /home/dev "$container" true 2>&1 </dev/null)"; then
   exec docker exec "${tty_flags[@]}" -u dev -w /home/dev "${env_flags[@]}" "$container" "$@"
 fi
 if [[ "$probe_error" != *"unsafe procfs detected"* ]]; then

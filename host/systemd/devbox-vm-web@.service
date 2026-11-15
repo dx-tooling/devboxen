@@ -1,0 +1,22 @@
+# The browser UI's sockets of the VM box %i (VS Code, terminal, sessions, screens), forwarded
+# from its VM to /var/lib/devbox/web/boxes/%i on the host, where devboxen-web looks for every
+# box's sockets (docs/web.md, docs/vm.md). Over vsock, never over the VM network. Enabled and
+# disabled by devbox-admin with the box; installed by ansible/vm.yml.
+#
+# While the VM starts (or is stopped), ssh fails and is retried; the UI shows the box as not
+# answering meanwhile.
+[Unit]
+Description=devboxen: browser sockets of the VM box %i
+After=libvirtd.service
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/local/lib/devboxen/vm web-forward %i
+ExecStopPost=/bin/sh -c 'rm -f /var/lib/devbox/web/boxes/%i/*.sock'
+Restart=always
+RestartSec=5
+RestartSteps=5
+RestartMaxDelaySec=30
+
+[Install]
+WantedBy=multi-user.target

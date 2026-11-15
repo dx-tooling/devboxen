@@ -72,7 +72,7 @@ browser ──https──> Caddy (TLS "auto") or your reverse proxy ("proxy")
 |---|---|---|
 | code-server, ttyd, session API, screens | in each box, as `dev` ([`entrypoint.sh`](../box/entrypoint.sh)) | VS Code on `code.sock`, the terminal on `term.sock` (runs [`devbox-web-attach`](../box/web-attach.sh) `<session>`: tmux attach or create), the tmux session list on `api.sock` ([`web-api.js`](../box/web-api.js)), the box's Chrome on `screen.sock` and Claude's screen on `watch.sock` (noVNC's files and a WebSocket to the Xvnc display, [`web-vnc.js`](../box/web-vnc.js)). The box's `/run/devbox-web` is the host directory `/var/lib/devbox/web/boxes/<box>` (devbox-admin creates it). No network port, no password: only the host can reach the sockets. |
 | front | the host in `devboxen_front`; [`web/compose.yaml`](../web/compose.yaml), profile `front` (+ `auto`: Caddy) | the UI ([`ui/`](../cmd/devboxen-web/ui/)), `/api/hosts`, and the proxy `/h/<host>/b/<box>/{code,term,screen,watch}/…` |
-| backend | every other host, profile `backend` | the same for its own boxes, on `127.0.0.1:7700` (host network), no password |
+| backend | every other host, profile `backend` | the same for its own boxes, on `127.0.0.1:7700` (host network), no password. On a host without Docker (`containers = false`, [vm.md](vm.md)), the same program as the systemd service [`devboxen-web.service`](../web/devboxen-web.service), built by the deploy on your computer (needs Go) |
 | tunnel | front: `devbox-web-tunnel@<host>.service`; the other host: the user `devbox-web` | [`ansible/web.yml`](../ansible/web.yml) |
 
 **What the front knows about the other hosts** is only what their backends answer through

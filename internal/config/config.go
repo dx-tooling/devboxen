@@ -38,6 +38,10 @@ type Host struct {
 	PublicIPv4 string `toml:"public_ipv4"` // if ssh names the host by DNS name
 	Hardening  *bool  `toml:"hardening"`   // default true
 	AWS        *AWS   `toml:"aws"`         // an on-demand EC2 host
+	// VM boxes (docs/vm.md): true, false, or unset: if the host has /dev/kvm.
+	VMs *bool `toml:"vms"`
+	// false: only VM boxes, no Docker on the host itself. Default true.
+	Containers *bool `toml:"containers"`
 }
 
 type AWS struct {
@@ -147,6 +151,9 @@ func (c *Config) check() error {
 		if a := h.AWS; a != nil && (a.Profile == "" || a.Region == "" || a.Instance == "") {
 			return fmt.Errorf("hosts.%s.aws: profile, region and instance are needed", name)
 		}
+		if !h.HasContainers() && h.VMs != nil && !*h.VMs {
+			return fmt.Errorf("hosts.%s: containers = false needs VM boxes (vms true or unset)", name)
+		}
 	}
 	if c.DefaultHost == "" {
 		c.DefaultHost = c.Order[0]
@@ -165,6 +172,9 @@ func (c *Config) check() error {
 	}
 	if c.Hosts[c.Web.Front] == nil {
 		return fmt.Errorf("web.front %q is not one of the hosts", c.Web.Front)
+	}
+	if !c.Hosts[c.Web.Front].HasContainers() {
+		return fmt.Errorf("web.front %q has containers = false; the browser UI's front runs in Docker", c.Web.Front)
 	}
 	return nil
 }
@@ -212,6 +222,10 @@ func (h *Host) User() string {
 	}
 	return "root"
 }
+
+// HasContainers: container boxes (and Docker) on the host itself; false for a host with only
+// VM boxes.
+func (h *Host) HasContainers() bool { return h.Containers == nil || *h.Containers }
 
 // OnDemand: an EC2 host the CLI starts and stops.
 func (h *Host) OnDemand() bool { return h.AWS != nil }

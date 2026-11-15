@@ -1,0 +1,244 @@
+---
+# VM boxes (docs/vm.md) on the hosts that can run them: libvirt and QEMU, the VM network,
+# vsock, the key the host reaches its VMs with, and the base image every VM box is copied
+# from.
+#
+#   ansible-playbook -i <inventory> vm.yml --check --diff
+#
+# A host has VM boxes if devboxen_vms is true, or unset ("auto") and it has /dev/kvm
+# (hardware virtualization; on a VPS, nested virtualization from the provider).
+#
+# The base image: Ubuntu 24.04's cloud image with devboxen's plays and the box image, built
+# once per version of the files it comes from (BASE_ID below). When it is missing, this play
+# starts a builder VM and adds it to the group devboxen_vm_guests; base.yml, sysbox.yml and
+# host.yml then set it up like a host, and vm-guest.yml finishes it into the base image.
+# Running VM boxes keep their system until they are rebuilt (devboxen deploy --rebuild-boxes).
+#
+# Variables (inventory):
+#   devboxen_vms   true, false, or unset (auto: if the host has /dev/kvm)
+- name: VM boxes on the host
+  hosts: devboxen_hosts
+  gather_facts: false
+  become: false # devboxen connects as root
+
+  vars:
+    host_files: "{{ playbook_dir }}/../host"
+    vms_setting: "{{ devboxen_vms | default('auto') | string | lower }}"
+    vm_root: /var/lib/devbox/vms
+    cloud_image_dir: https://cloud-images.ubuntu.com/releases/noble/release
+    cloud_image_name: ubuntu-24.04-server-cloudimg-amd64.img
+    cloud_image: "{{ vm_root }}/{{ cloud_image_name }}"
+
+  handlers:
+    - name: reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+  tasks:
+    - name: Does the host have /dev/kvm
+      ansible.builtin.stat:
+        path: /dev/kvm
+      register: kvm
+
+    - name: Whether this host gets VM boxes
+      ansible.builtin.set_fact:
+        devboxen_vm_host: "{{ vms_setting in ['true', 'yes', '1'] or (vms_setting == 'auto' and kvm.stat.exists) }}"
+
+    - name: VM boxes need /dev/kvm
+      ansible.builtin.assert:
+        that: kvm.stat.exists or not devboxen_vm_host
+        fail_msg: >-
+          devboxen_vms is true, but {{ inventory_hostname }} has no /dev/kvm: no hardware
+          virtualization (on a VPS: ask the provider for nested virtualization)
+        quiet: true
+
+    - name: Nothing more on a host without VM boxes
+      ansible.builtin.meta: end_host
+      when: not devboxen_vm_host
+
+    - name: libvirt, QEMU and the tools for the VMs
+      ansible.builtin.apt:
+        name:
+          - qemu-system-x86
+          - qemu-utils
+          - libvirt-daemon-system
+          - libvirt-clients
+          - virtinst
+          - cloud-image-utils # cloud-localds: the cloud-init seed of each VM
+          - socat # the vsock stream to a VM's sshd
+          - e2fsprogs
+        state: present
+        update_cache: true
+        cache_valid_time: 86400
+
+    - name: vsock for the VMs, now and at every boot
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/devboxen-vsock.conf
+        content: "vhost_vsock\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: The vsock module is loaded
+      community.general.modprobe:
+        name: vhost_vsock
+        state: present
+
+    - name: libvirt runs
+      ansible.builtin.systemd_service:
+        name: libvirtd
+        enabled: true
+        state: started
+
+    - name: devboxen's directories for the VMs
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: /var/lib/devbox, mode: "0755" }
+        # QEMU runs as libvirt-qemu: it must pass through (0711), not list, to the disks.
+        - { path: "{{ vm_root }}", mode: "0711" }
+        - { path: /usr/local/lib/devboxen, mode: "0755" }
+        - { path: /etc/devboxen, mode: "0755" }
+
+    - name: The VM command (devbox-admin and devbox use it)
+      ansible.builtin.copy:
+        src: "{{ host_files }}/lib/vm.sh"
+        dest: /usr/local/lib/devboxen/vm
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: The unit that forwards a VM box's browser sockets to the host
+      ansible.builtin.copy:
+        src: "{{ host_files }}/systemd/devbox-vm-web@.service"
+        dest: /etc/systemd/system/devbox-vm-web@.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: reload systemd
+
+    - name: The key the host reaches its VMs with (made once, root-only)
+      ansible.builtin.command: ssh-keygen -q -t ed25519 -N "" -C devboxen-vm -f /etc/devboxen/vm_ed25519
+      args:
+        creates: /etc/devboxen/vm_ed25519
+
+    # One network for all VM boxes, NAT to the internet, its own bridge dbv0. Every port is
+    # isolated: the VMs cannot reach each other. The host firewall (host-firewall.nft) lets
+    # them reach only DHCP and DNS of the host itself.
+    - name: The VM network's definition
+      ansible.builtin.copy:
+        dest: /etc/devboxen/vm-network.xml
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          <network>
+            <name>devboxen</name>
+            <forward mode='nat'/>
+            <bridge name='dbv0' stp='on' delay='0'/>
+            <port isolated='yes'/>
+            <ip address='10.198.0.1' netmask='255.255.255.0'>
+              <dhcp>
+                <range start='10.198.0.10' end='10.198.0.250'/>
+              </dhcp>
+            </ip>
+          </network>
+
+    - name: The VM network is defined
+      ansible.builtin.shell: >-
+        virsh net-info devboxen >/dev/null 2>&1 && echo present ||
+        virsh net-define /etc/devboxen/vm-network.xml
+      register: vm_net
+      changed_when: "'present' not in vm_net.stdout"
+
+    - name: The VM network starts with the host, and runs
+      ansible.builtin.shell: |
+        set -e
+        changed=
+        virsh net-info devboxen | grep -q '^Autostart: *yes' || { virsh net-autostart devboxen >/dev/null; changed=1; }
+        virsh net-info devboxen | grep -q '^Active: *yes' || { virsh net-start devboxen >/dev/null; changed=1; }
+        echo "${changed:+changed}"
+      register: vm_net_up
+      changed_when: "'changed' in vm_net_up.stdout"
+      when: not ansible_check_mode
+
+    # A dry run on a fresh host has no directory to download into yet.
+    - name: Is the VM directory there
+      ansible.builtin.stat:
+        path: "{{ vm_root }}"
+      register: vm_root_dir
+
+    - name: Ubuntu 24.04's cloud image (checksum-verified)
+      ansible.builtin.get_url:
+        url: "{{ cloud_image_dir }}/{{ cloud_image_name }}"
+        checksum: "sha256:{{ cloud_image_dir }}/SHA256SUMS"
+        dest: "{{ cloud_image }}"
+        mode: "0600"
+      when: vm_root_dir.stat.exists or not ansible_check_mode
+
+    # The version of the base image: the files it is built from, and the box image setting.
+    - name: The base image's version
+      ansible.builtin.shell: |
+        set -eo pipefail
+        cd {{ playbook_dir | quote }}/..
+        {
+          echo "box image: {{ devboxen_box_image | default('local') }}"
+          find ansible/base.yml ansible/sysbox.yml ansible/host.yml ansible/vm-guest.yml box \
+            host/bin host/docker host/firewall host/hardening host/needrestart \
+            -type f ! -name .DS_Store ! -path 'box/tests/*' | LC_ALL=C sort |
+            while read -r f; do echo "$f"; cat "$f"; done
+        } | openssl dgst -sha256 -r | cut -c1-12
+      args:
+        executable: /bin/bash
+      delegate_to: localhost
+      register: base_version
+      changed_when: false
+      check_mode: false
+
+    - name: Is the base image of this version there
+      ansible.builtin.stat:
+        path: "{{ vm_root }}/base/base-{{ base_version.stdout }}.qcow2"
+      register: base_image
+
+    - name: Whether a base image is built in this run
+      ansible.builtin.set_fact:
+        devboxen_vm_base_id: "{{ base_version.stdout }}"
+        devboxen_vm_building: "{{ not base_image.stat.exists and not ansible_check_mode }}"
+
+    - name: The builder VM, from the cloud image (the base image is missing or out of date)
+      ansible.builtin.command: /usr/local/lib/devboxen/vm builder-start {{ devboxen_vm_base_id }} {{ cloud_image }}
+      when: devboxen_vm_building
+
+    - name: The builder VM answers over vsock
+      ansible.builtin.command: /usr/local/lib/devboxen/vm wait builder 600
+      changed_when: false
+      when: devboxen_vm_building
+
+    # Reached through this host: ssh to it, then the vsock stream to the builder's sshd. The
+    # builder accepts the keys that may log in to this host as root.
+    - name: The builder joins the run (base.yml, sysbox.yml, host.yml, vm-guest.yml)
+      ansible.builtin.add_host:
+        name: "{{ inventory_hostname }}-vmbase"
+        groups: devboxen_vm_guests
+        ansible_host: "{{ inventory_hostname }}-vmbase"
+        ansible_user: root
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_ssh_common_args: >-
+          -o ProxyCommand="ssh -o ForwardAgent=no -o BatchMode=yes
+          {{ ansible_user | default('root') }}@{{ ansible_host }} /usr/local/lib/devboxen/vm proxy builder"
+          -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+        devboxen_host_name: "{{ devboxen_host_name }}"
+        devboxen_vm_outer: "{{ inventory_hostname }}"
+        devboxen_vms: false
+        devboxen_containers: true
+        devboxen_hardening: true
+        # Not in a VM: zeroing all of its memory at every boot takes minutes when nested, and
+        # touches every page, so the VM can hand none back to the host. A kernel exploit in a
+        # VM box reaches only that VM.
+        devboxen_init_on_free: false
+        devboxen_box_image: "{{ devboxen_box_image | default(omit) }}"
+      when: devboxen_vm_building

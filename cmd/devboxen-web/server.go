@@ -183,6 +183,7 @@ type boxInfo struct {
 	Reason   string    `json:"reason,omitempty"`
 	Memory   string    `json:"memory,omitempty"`
 	CPUs     string    `json:"cpus,omitempty"`
+	Kind     string    `json:"kind,omitempty"` // "vm" for a VM box (docs/vm.md)
 	Sessions []session `json:"sessions"`
 }
 
@@ -261,6 +262,8 @@ func (s *server) fillBox(ctx context.Context, b *boxInfo) {
 				b.Memory = v
 			} else if v, ok := strings.CutPrefix(line, "DEVBOX_CPUS="); ok {
 				b.CPUs = v
+			} else if v, ok := strings.CutPrefix(line, "DEVBOX_KIND="); ok {
+				b.Kind = v
 			}
 		}
 	}
@@ -270,6 +273,8 @@ func (s *server) fillBox(ctx context.Context, b *boxInfo) {
 	resp, err := s.api.Do(req)
 	if err != nil {
 		switch {
+		case errors.Is(err, os.ErrNotExist) && b.Kind == "vm":
+			b.Reason = "stopped, or starting" // its VM's sockets are forwarded only while it runs
 		case errors.Is(err, os.ErrNotExist):
 			b.Reason = "no web access (box not rebuilt yet?)"
 		case errors.Is(err, syscall.ECONNREFUSED):

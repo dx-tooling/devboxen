@@ -243,7 +243,7 @@ func (u *tui) card(h string, iw int) (titleL, titleR string, body []string) {
 	namew, resw := 4, 0
 	for _, b := range boxes {
 		namew = max(namew, len(b.box))
-		resw = max(resw, len(b.mem+" · "+b.cpus+" cpu"))
+		resw = max(resw, len(boxResources(b)))
 	}
 	for _, b := range boxes {
 		st, glyph := b.status, c(cBad, "✕")
@@ -255,7 +255,7 @@ func (u *tui) card(h string, iw int) (titleL, titleR string, body []string) {
 		case "paused", "restarting":
 			glyph = c(cWarn, "◐")
 		}
-		line := glyph + " " + pad(c(cBold, b.box), namew) + "  " + pad(c(cDim, b.mem+" · "+b.cpus+" cpu"), resw) + "  "
+		line := glyph + " " + pad(c(cBold, b.box), namew) + "  " + pad(c(cDim, boxResources(b)), resw) + "  "
 		prefix := vlen(line)
 		switch {
 		case st != "running":
@@ -913,3 +913,12 @@ func (u *tui) hostsMenu() {
 func nameOK(s string) bool { return len(s) > 0 && len(s) <= 11 && boxNameRE.MatchString(s) }
 
 var boxNameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// boxResources: "8g · 6 cpu", and " · vm" for a VM box.
+func boxResources(b boxRow) string {
+	s := b.mem + " · " + b.cpus + " cpu"
+	if b.boxKind == "vm" {
+		s += " · vm"
+	}
+	return s
+}

@@ -260,8 +260,8 @@ func (a *app) cmdTunnel(args []string) error {
 }
 
 // Resolve the same default as the host's devbox command, once before opening the
-// listener. The stream itself enters that container directly: the devbox wrapper's
-// preflight docker exec used to read from stdin and could eat the first TLS packet.
+// listener. The stream itself goes through the host's devbox command (a container box and a
+// VM box alike), whose preflight reads nothing from stdin: it once ate the first TLS packet.
 func (a *app) runningBoxName(t target) (string, error) {
 	out, err := a.adminOutput(t.host, 10, "list", "--names")
 	if err != nil {
@@ -323,8 +323,8 @@ func (a *app) tunnel(t target, port, local int, addr string) error {
 }
 
 func (a *app) relayConnection(ctx context.Context, t target, port int, addr string, conn net.Conn) {
-	args := []string{"docker", "exec", "-i", "-u", "dev", "-w", "/home/dev", "devbox-" + t.box,
-		"node", "-e", boxTCPRelay, addr, strconv.Itoa(port)}
+	// Through the host's devbox command, which enters a container box or a VM box alike.
+	args := []string{a.remoteDevbox, "-b", t.box, "--", "node", "-e", boxTCPRelay, addr, strconv.Itoa(port)}
 	sshArgs := append(append([]string{}, sshBase...), "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", t.host.SSH, remoteCommand(args...))
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs...)
 	cmd.WaitDelay = 2 * time.Second

@@ -2,11 +2,16 @@
 
 What a box can and cannot do, and why it is built that way.
 
-## Why a Sysbox container, not a VM
+## Containers and VMs
 
-Many VPS are KVM guests **without nested virtualization** (no `svm`/`vmx`, no `/dev/kvm`),
-so a VM would only run emulated (QEMU TCG, 5–20× slower). Docker-in-Docker with
-`--privileged` or the host's Docker socket would be fast, but is root on the host.
+A box is a Sysbox container, and on a host with hardware virtualization (`/dev/kvm`) it runs
+in a virtual machine of its own by default: a **VM box** ([vm.md](vm.md)). The container is
+the same in both; the VM adds its own kernel around it.
+
+Many VPS are KVM guests **without nested virtualization** (no `svm`/`vmx`, no `/dev/kvm`):
+there, a VM would only run emulated (QEMU TCG, 5–20× slower), so boxes are containers only.
+Docker-in-Docker with `--privileged` or the host's Docker socket would be fast, but is root
+on the host.
 
 [Sysbox](https://github.com/nestybox/sysbox) (installed by
 [`ansible/sysbox.yml`](../ansible/sysbox.yml)) is a container runtime that runs such "system
@@ -19,10 +24,11 @@ containers" unprivileged:
 | **Virtualized `/proc`, `/sys`** | partly emulated by `sysbox-fs`; no host devices |
 | **Limits** | per box, default `cpus: 6`, `mem_limit: 8g` (`--mem`, `--cpus` at creation); `pids_limit: 16384`, `shm_size: 2g`. CPU limits may add up past the host's cores; memory limits that add up past the host's free memory risk the OOM killer picking something else when the boxes are busy. Stop boxes you are not using. |
 | **Not public, separate** | no published ports, on no network but its own (bridge `dbx-<name>`): boxes cannot reach each other; no box reaches the sshd of any devboxen host |
-| **seccomp** | Docker's default profile minus MPTCP sockets, see below |
+| **seccomp** | Docker's default profile minus MPTCP sockets, see below; like Docker's default, it allows only common address families (no `AF_VSOCK`) |
 
-It is **kernel-shared isolation**: a kernel exploit escapes it, as from any container. Only
-a VM closes that, which needs nested virtualization from the hosting provider.
+A container box is **kernel-shared isolation**: a kernel exploit escapes it, as from any
+container. A VM box closes that: the exploit reaches the kernel of its VM, which holds only
+that box. What a VM box costs, and how it is built: [vm.md](vm.md).
 
 ## What a box holds
 
@@ -71,7 +77,8 @@ MPTCP listener itself and attack the shared kernel locally. So each box has thre
 
 1. **seccomp** ([`seccomp.json`](../box/seccomp.json), built by
    [`seccomp/generate.sh`](../box/seccomp/generate.sh)): `socket(…, IPPROTO_MPTCP)` fails
-   with `EPERM` for every process in the box, nested containers included. Nothing inside
+   with `EPERM` for every process in the box, nested containers included. The address
+   families stay those of Docker's default. Nothing inside
    can lift a seccomp filter, so this holds whatever root inside does. **This is the layer
    that counts.** (`socketcall` is dropped; io_uring is already denied by Docker's default.)
 2. `net.mptcp.enabled=0` in the box's namespace, set by

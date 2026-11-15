@@ -29,6 +29,8 @@ organization. Use [Coder](https://github.com/coder/coder) for that.
   [Sysbox](https://github.com/nestybox/sysbox)). `docker compose up` works as on a
   workstation and at the same speed. A box cannot reach the host, other boxes or the
   server's SSH. You can have several boxes per server, for example one per project.
+- **Or a virtual machine per box.** On a server with hardware virtualization, each box runs
+  in its own VM by default, with its own kernel ([docs/vm.md](docs/vm.md)).
 - **Sessions that keep running.** Every terminal and every Claude Code session runs in tmux
   inside the box. Close the laptop, lose the connection, continue from another device.
 - **Claude Code included.** One login for all boxes on a server. Claude can use a real
@@ -50,7 +52,7 @@ organization. Use [Coder](https://github.com/coder/coder) for that.
 | [`ansible/`](ansible/) | Server setup and deployment |
 | [`tofu/aws-host/`](tofu/aws-host/) | OpenTofu module for an on-demand AWS server |
 | [`cmd/devboxen/`](cmd/devboxen/) | The `devboxen` command line tool |
-| [`docs/`](docs/) | [Settings](docs/config.md), [boxes](docs/box.md), [browser interface](docs/web.md), [AWS hosts](docs/aws.md), [security](docs/security.md) |
+| [`docs/`](docs/) | [Settings](docs/config.md), [boxes](docs/box.md), [VM boxes](docs/vm.md), [browser interface](docs/web.md), [AWS hosts](docs/aws.md), [security](docs/security.md) |
 
 ## Getting started
 

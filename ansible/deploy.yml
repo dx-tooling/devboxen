@@ -12,6 +12,8 @@
 #   devboxen_web_compose_override  a local compose file merged on top (proxy: your proxy's network, labels)
 #   devboxen_web_image             a published devboxen-web image (default: built on the host)
 #   devboxen_web_htpasswd_file     a local htpasswd file (bcrypt), for the front
+#   devboxen_containers            false: a host with only VM boxes, no Docker of its own; its
+#                                  backend runs as a systemd service, built here (needs Go)
 - name: devboxen on the hosts
   hosts: devboxen_hosts
   gather_facts: false
@@ -22,6 +24,7 @@
     is_front: "{{ inventory_hostname in (groups['devboxen_front'] | default([])) }}"
     tls: "{{ devboxen_web_tls | default('auto') }}"
     others: "{{ groups['devboxen_hosts'] | difference(groups['devboxen_front'] | default([])) }}"
+    containers: "{{ devboxen_containers | default(true) | bool }}"
 
   tasks:
     - name: The front is set, and has what it needs
@@ -31,9 +34,10 @@
           - tls in ['auto', 'proxy']
           - tls != 'auto' or (devboxen_web_domain | default('') | length > 0)
           - not is_front or (devboxen_web_htpasswd_file | default('') | length > 0)
+          - not is_front or containers
         fail_msg: >-
           one host in devboxen_front; devboxen_web_tls auto or proxy; auto needs devboxen_web_domain;
-          the front needs devboxen_web_htpasswd_file
+          the front needs devboxen_web_htpasswd_file, and Docker (not a host with containers = false)
         quiet: true
 
     - name: The install
@@ -101,6 +105,7 @@
           {% endif %}
 
     - name: devboxen-web runs
+      when: containers and not ansible_check_mode
       ansible.builtin.command:
         cmd: >-
           docker compose up -d --remove-orphans
@@ -108,7 +113,48 @@
         chdir: "{{ root }}/web"
       register: web_up
       changed_when: "'Recreated' in web_up.stderr or 'Started' in web_up.stderr or 'Created' in web_up.stderr"
-      when: not ansible_check_mode
+
+    # A host without Docker: the backend as a systemd service, the binary built here.
+    - name: devboxen-web's backend for a host without Docker, built on this computer
+      ansible.builtin.command:
+        cmd: go build -trimpath -ldflags=-s -o {{ (lookup('env', 'TMPDIR') or '/tmp') | quote }}/devboxen-web-{{ inventory_hostname }} ./cmd/devboxen-web
+        chdir: "{{ playbook_dir }}/.."
+      environment:
+        GOOS: linux
+        GOARCH: amd64
+        CGO_ENABLED: "0"
+      delegate_to: localhost
+      changed_when: false
+      check_mode: false
+      when: not containers
+
+    - name: devboxen-web's backend binary
+      ansible.builtin.copy:
+        src: "{{ (lookup('env', 'TMPDIR') or '/tmp') }}/devboxen-web-{{ inventory_hostname }}"
+        dest: /usr/local/lib/devboxen/devboxen-web
+        owner: root
+        group: root
+        mode: "0755"
+      register: web_bin
+      when: not containers
+
+    - name: devboxen-web's backend unit
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../web/devboxen-web.service"
+        dest: /etc/systemd/system/devboxen-web.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: web_unit
+      when: not containers
+
+    - name: devboxen-web's backend runs
+      ansible.builtin.systemd_service:
+        name: devboxen-web
+        enabled: true
+        state: "{{ 'restarted' if (web_bin.changed or web_unit.changed) else 'started' }}"
+        daemon_reload: true
+      when: not containers and not ansible_check_mode
 
     - name: The boxes, recreated with the current image (their sessions end)
       ansible.builtin.command: devbox-admin rebuild

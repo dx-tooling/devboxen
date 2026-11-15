@@ -26,6 +26,8 @@ characters, lowercase letters, digits and `-`.
 | `ssh` | `root@<address>`. devboxen uses your normal SSH setup (keys, agent, `~/.ssh/config`), but never forwards the agent. |
 | `public_ipv4` | The host's public IPv4 address, if `ssh` uses a DNS name. The firewall needs the address. |
 | `hardening` | `false` turns off the optional hardening (key-only SSH, journal size cap, kernel mitigations). Default: on. |
+| `vms` | VM boxes, each in a virtual machine of its own ([vm.md](vm.md)): `true`, `false`, or unset: if the host has `/dev/kvm` (the default). On such a host a new box is a VM unless created with `--container`. |
+| `containers` | `false`: only VM boxes, no Docker on the host itself. Not for the `[web]` front. Default: `true`. |
 | `aws` | Makes this an on-demand AWS host: `{ profile, region, instance, sso_session, data_volume }`. `profile` is an AWS CLI profile; `sso_session` is used to log in again when the login has expired; `data_volume` is the EBS volume for the boxes' data. All of these come from the outputs of [`tofu/aws-host`](../tofu/aws-host/); `devboxen host add` fills them in ([aws.md](aws.md)). |
 
 ## `[web]`

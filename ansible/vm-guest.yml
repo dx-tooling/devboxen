@@ -1,0 +1,111 @@
+---
+# The base image of VM boxes, finished (docs/vm.md). vm.yml started a builder VM and put it in
+# the group devboxen_vm_guests; base.yml, sysbox.yml and host.yml have set it up like a host.
+# Here: what only a VM box needs, the box image, a clean seal; then the host turns the
+# builder's disk into the base image. Without a builder in this run, nothing happens.
+#
+# In a VM box made from it, the box's volumes live on the VM's data disk (ext4, label
+# devbox-data), mounted at /var/lib/docker/volumes before Docker starts; everything else is
+# the system disk, which a rebuild replaces.
+- name: The base image, in the builder VM
+  hosts: devboxen_vm_guests
+  gather_facts: false
+  become: false # root
+
+  tasks:
+    - name: The data disk of a VM box, at /var/lib/docker/volumes (none in the builder)
+      ansible.posix.mount:
+        src: LABEL=devbox-data
+        path: /var/lib/docker/volumes
+        fstype: ext4
+        opts: defaults,nofail,x-systemd.device-timeout=10s
+        state: present
+
+    - name: Docker's drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+        mode: "0755"
+
+    # With nofail, the boot does not wait for the mount; Docker must.
+    - name: Docker starts after the data disk is mounted
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/docker.service.d/10-devboxen-data-disk.conf
+        mode: "0644"
+        content: |
+          # devboxen (ansible/vm-guest.yml): the box's volumes are on the VM's data disk.
+          [Unit]
+          Wants=var-lib-docker-volumes.mount
+          After=var-lib-docker-volumes.mount
+
+    - name: The install directory
+      ansible.builtin.file:
+        path: /opt/devboxen
+        state: directory
+        mode: "0755"
+
+    - name: The install (box/, host/), for devbox-admin in the VM
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../{{ item }}"
+        dest: /opt/devboxen/
+        mode: preserve
+      loop: [box, host]
+
+    - name: Ubuntu's updates
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: true
+
+    - name: The box image (built, or pulled if a published one is set; takes a while)
+      ansible.builtin.command: devbox-admin image
+      async: 3600
+      poll: 15
+      changed_when: true
+
+    # Every VM box made from it gets new SSH host keys, a new machine-id and the current
+    # login keys from cloud-init at its first start (vm.sh seed).
+    - name: Sealed and shut down
+      ansible.builtin.shell: |
+        set -e
+        docker builder prune -af >/dev/null 2>&1 || true
+        apt-get clean
+        rm -f /etc/ssh/ssh_host_*
+        : >/root/.ssh/authorized_keys
+        cloud-init clean --logs --machine-id
+        journalctl --rotate >/dev/null 2>&1 || true
+        journalctl --vacuum-time=1s >/dev/null 2>&1 || true
+        fstrim -a || true
+        systemd-run --on-active=3 /usr/bin/systemctl poweroff
+      changed_when: true
+
+    - name: The builder is done
+      ansible.builtin.set_fact:
+        devboxen_vm_sealed: true
+
+- name: The base image, on the host
+  hosts: devboxen_hosts
+  gather_facts: false
+  become: false
+
+  vars:
+    builder: "{{ inventory_hostname }}-vmbase"
+    sealed: "{{ hostvars[builder].devboxen_vm_sealed | default(false) if builder in hostvars else false }}"
+
+  tasks:
+    - name: The builder got through (else it is left running, to look into; the next deploy starts afresh)
+      ansible.builtin.fail:
+        msg: "the base image was not finished: see the errors of {{ builder }} above (virsh console devboxen-builder on the host)"
+      when: (devboxen_vm_building | default(false)) and not sealed
+
+    - name: The builder has shut down
+      ansible.builtin.command: /usr/local/lib/devboxen/vm state builder
+      register: builder_state
+      until: builder_state.stdout == 'stopped'
+      retries: 60
+      delay: 5
+      changed_when: false
+      when: devboxen_vm_building | default(false)
+
+    - name: Its disk becomes the base image
+      ansible.builtin.command: /usr/local/lib/devboxen/vm builder-finish {{ devboxen_vm_base_id }}
+      when: devboxen_vm_building | default(false)

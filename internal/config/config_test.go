@@ -71,3 +71,32 @@ func TestLoadRefuses(t *testing.T) {
 		}
 	}
 }
+
+func TestVMSettings(t *testing.T) {
+	c, err := Load(write(t, `
+[hosts.vps]
+ssh = "root@203.0.113.10"
+
+[hosts.kvm]
+ssh = "root@192.0.2.30"
+containers = false
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Hosts["vps"].HasContainers() || c.Hosts["vps"].VMs != nil {
+		t.Errorf("vps: containers by default, VM boxes auto")
+	}
+	if c.Hosts["kvm"].HasContainers() {
+		t.Errorf("kvm: containers = false")
+	}
+
+	for name, content := range map[string]string{
+		"no boxes at all":      "[hosts.kvm]\nssh = \"root@192.0.2.30\"\ncontainers = false\nvms = false\n",
+		"front without Docker": "[hosts.kvm]\nssh = \"root@192.0.2.30\"\ncontainers = false\n",
+	} {
+		if _, err := Load(write(t, content)); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}

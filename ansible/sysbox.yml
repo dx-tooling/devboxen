@@ -12,7 +12,7 @@
 # otherwise add itself (see ../host/docker/daemon.json and docs/box.md for why
 # bip/default-address-pools are pinned to Docker's defaults).
 - name: Sysbox container runtime (for the boxes)
-  hosts: devboxen_hosts
+  hosts: devboxen_hosts:devboxen_vm_guests
   gather_facts: false
   become: false # already root
 
@@ -36,6 +36,11 @@
         state: reloaded
 
   tasks:
+    # A host with only VM boxes runs no containers itself: Sysbox is in its VMs.
+    - name: Nothing here on a host without container boxes
+      ansible.builtin.meta: end_host
+      when: not (devboxen_containers | default(true) | bool)
+
     # Ubuntu 24.04 restricts unprivileged user namespaces. Codex uses /usr/bin/bwrap
     # from the box image; this profile permits only that binary to set up its sandbox.
     # Keep kernel.apparmor_restrict_unprivileged_userns enabled for other processes.

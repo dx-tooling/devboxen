@@ -14,6 +14,13 @@ ssh = "root@203.0.113.10"
 # ssh = "root@198.51.100.20"
 # aws = { profile = "devboxen", region = "eu-central-1", instance = "i-0123456789abcdef0", data_volume = "vol-0123456789abcdef0" }
 
+# Optional: a server with hardware virtualization (/dev/kvm) whose boxes are all virtual
+# machines, and that runs no Docker itself (docs/vm.md). Any host with /dev/kvm gets VM
+# boxes by default; `containers = false` leaves out the containers on the host itself.
+# [hosts.kvm]
+# ssh = "root@192.0.2.30"
+# containers = false
+
 # The browser interface: served by one host, for all of them.
 [web]
 front = "vps"

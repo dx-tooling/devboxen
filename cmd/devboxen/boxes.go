@@ -96,12 +96,15 @@ func (a *app) listHost(h *config.Host) error {
 }
 
 func (a *app) cmdCreate(args []string) error {
-	pos, opts, err := splitFlags(args, map[string]bool{"mem": true, "cpus": true})
+	pos, opts, err := splitFlags(args, map[string]bool{"mem": true, "cpus": true, "disk": true, "vm": false, "container": false})
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
-		return errors.New("devboxen create box[@host] [--mem 8g] [--cpus 6]")
+		return errors.New("devboxen create box[@host] [--vm | --container] [--mem 8g] [--cpus 6] [--disk 100g]")
+	}
+	if opts["vm"] != "" && opts["container"] != "" {
+		return errors.New("--vm or --container, not both")
 	}
 	t, err := a.parseTarget(pos[0])
 	if err != nil {
@@ -111,6 +114,15 @@ func (a *app) cmdCreate(args []string) error {
 		return errors.New("which name? devboxen create box[@host]")
 	}
 	adminArgs := []string{"create", t.box}
+	switch {
+	case opts["vm"] != "":
+		adminArgs = append(adminArgs, "--vm")
+	case opts["container"] != "":
+		adminArgs = append(adminArgs, "--container")
+	}
+	if v := opts["disk"]; v != "" {
+		adminArgs = append(adminArgs, "--disk", v)
+	}
 	if v := opts["mem"]; v != "" {
 		adminArgs = append(adminArgs, "--mem", v)
 	}

@@ -11,8 +11,14 @@
 #   devboxen_public_ipv4   its public IPv4 address; default: ansible_host
 #   devboxen_box_image     the box image (a published one is pulled; default: built on the host)
 #   devboxen_hardening     true (default) or false
+#   devboxen_init_on_free  false: no init_on_free=1 even with hardening (VM boxes: see vm.yml)
+#   devboxen_vms           true, false, or unset: VM boxes if the host has /dev/kvm (docs/vm.md)
+#   devboxen_containers    false: only VM boxes, no Docker on the host itself (default true)
+#
+# Also run on the builder of the VM boxes' base image (devboxen_vm_guests, see vm.yml): a VM
+# box is a host with one box inside.
 - name: The devboxes' host side
-  hosts: devboxen_hosts
+  hosts: devboxen_hosts:devboxen_vm_guests
   gather_facts: false
   become: false # devboxen connects as root
 
@@ -45,7 +51,9 @@
         state: restarted
     - name: reload sshd
       # sshd -t checks the whole config; on failure the running daemon keeps its old one.
-      ansible.builtin.shell: sshd -t && systemctl reload ssh
+      # Ubuntu starts ssh.service at the first connection (ssh.socket); until then, and in a
+      # VM box (reached over vsock, sshd -i per connection), there is nothing to reload.
+      ansible.builtin.shell: sshd -t && { ! systemctl is-active -q ssh || systemctl reload ssh; }
 
   tasks:
     - name: The host has a devboxen name
@@ -138,7 +146,14 @@
         group: root
         mode: "0644"
       notify: update grub
-      when: hardening
+      when: hardening and (devboxen_init_on_free | default(true) | bool)
+
+    - name: No init_on_free where it is turned off
+      ansible.builtin.file:
+        path: /etc/default/grub.d/60-cve-2026-98432-init-on-free.cfg
+        state: absent
+      notify: update grub
+      when: hardening and not (devboxen_init_on_free | default(true) | bool)
 
     - name: journald drop-in directory exists
       ansible.builtin.file:
@@ -188,7 +203,15 @@
         group: root
         mode: "0644"
 
+    - name: Does the host have /dev/kvm
+      ansible.builtin.stat:
+        path: /dev/kvm
+      register: kvm
+
     - name: The host's devboxen settings (read by devbox-admin)
+      vars:
+        vms_setting: "{{ devboxen_vms | default('auto') | string | lower }}"
+        vms: "{{ vms_setting in ['true', 'yes', '1'] or (vms_setting == 'auto' and kvm.stat.exists) }}"
       ansible.builtin.copy:
         dest: /etc/devboxen/host.env
         owner: root
@@ -199,6 +222,8 @@
           {% if devboxen_box_image is defined %}
           DEVBOXEN_BOX_IMAGE={{ devboxen_box_image }}
           {% endif %}
+          DEVBOXEN_VMS={{ 1 if vms | bool else 0 }}
+          DEVBOXEN_CONTAINERS={{ 1 if devboxen_containers | default(true) | bool else 0 }}
 
     - name: The devbox and devbox-admin commands
       ansible.builtin.copy:

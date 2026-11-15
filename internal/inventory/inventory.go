@@ -26,12 +26,20 @@ func Render(c *config.Config, htpasswd string) string {
 		if h.Hardening != nil && !*h.Hardening {
 			vars = append(vars, "devboxen_hardening=false")
 		}
+		if h.VMs != nil {
+			vars = append(vars, fmt.Sprintf("devboxen_vms=%t", *h.VMs))
+		}
+		if !h.HasContainers() {
+			vars = append(vars, "devboxen_containers=false")
+		}
 		if h.AWS != nil && h.AWS.DataVolume != "" {
 			vars = append(vars, "devboxen_data_volume_id="+h.AWS.DataVolume)
 		}
 		fmt.Fprintf(&b, "%s %s\n", name, strings.Join(vars, " "))
 	}
-	fmt.Fprintf(&b, "\n[devboxen_front]\n%s\n\n[devboxen_hosts:vars]\n", c.Web.Front)
+	fmt.Fprintf(&b, "\n[devboxen_front]\n%s\n", c.Web.Front)
+	// The builders of VM boxes' base images join this group during a run (ansible/vm.yml).
+	b.WriteString("\n[devboxen_vm_guests]\n\n[devboxen_hosts:vars]\n")
 	b.WriteString("ansible_python_interpreter=/usr/bin/python3\n")
 	fmt.Fprintf(&b, "devboxen_web_tls=%s\n", c.Web.TLS)
 	if c.Web.Domain != "" {
