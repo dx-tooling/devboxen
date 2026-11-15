@@ -104,6 +104,28 @@
           DEVBOXEN_WEB_IMAGE={{ devboxen_web_image }}
           {% endif %}
 
+    # A host that had only VM boxes and now has Docker too: its systemd backend gives way to
+    # the container (both would listen on 127.0.0.1:7700).
+    - name: No systemd backend on a host with Docker
+      when: containers
+      block:
+        - name: The systemd backend is stopped
+          ansible.builtin.systemd_service:
+            name: devboxen-web
+            state: stopped
+            enabled: false
+          failed_when: false
+        - name: The systemd backend is removed
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop: [/etc/systemd/system/devboxen-web.service, /usr/local/lib/devboxen/devboxen-web]
+          register: web_systemd_gone
+        - name: systemd forgets it
+          ansible.builtin.systemd_service:
+            daemon_reload: true
+          when: web_systemd_gone.changed
+
     - name: devboxen-web runs
       when: containers and not ansible_check_mode
       ansible.builtin.command:

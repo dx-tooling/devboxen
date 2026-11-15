@@ -59,6 +59,13 @@
       register: bwrap_profile_source
       check_mode: false
 
+    # Ubuntu 26.04 ships the profile in the apparmor package itself, already in place.
+    - name: Check for a Bubblewrap profile in place
+      ansible.builtin.stat:
+        path: /etc/apparmor.d/bwrap-userns-restrict
+      register: bwrap_profile_dest
+      check_mode: false
+
     - name: Bubblewrap's user namespace profile is installed
       ansible.builtin.copy:
         src: /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
@@ -68,7 +75,7 @@
         group: root
         mode: "0644"
       notify: load bwrap AppArmor profile
-      when: bwrap_profile_source.stat.exists or not ansible_check_mode
+      when: bwrap_profile_source.stat.exists or not (ansible_check_mode or bwrap_profile_dest.stat.exists)
 
     - name: Docker daemon config (validated with dockerd --validate)
       ansible.builtin.copy:
