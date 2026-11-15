@@ -27,6 +27,9 @@
     - name: load bwrap AppArmor profile
       ansible.builtin.command: apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict
 
+    - name: load fusermount3 AppArmor profile
+      ansible.builtin.command: apparmor_parser -r /etc/apparmor.d/fusermount3
+
     - name: reload docker
       # SIGHUP: picks up `runtimes` without touching running containers. bip and
       # default-address-pools are only read at a restart; they equal Docker's built-in
@@ -76,6 +79,28 @@
         mode: "0644"
       notify: load bwrap AppArmor profile
       when: bwrap_profile_source.stat.exists or not (ansible_check_mode or bwrap_profile_dest.stat.exists)
+
+    # Ubuntu 25.04 and later confine fusermount3 to mounts below a few directories (home, /mnt,
+    # /tmp, ...); sysbox-fs mounts each box's FUSE file system in /var/lib/sysboxfs, and the box
+    # does not start ("failed to pre-register with sysbox-fs"). Allowed for exactly that.
+    - name: Check for Ubuntu's fusermount3 profile
+      ansible.builtin.stat:
+        path: /etc/apparmor.d/fusermount3
+      register: fusermount3_profile
+      check_mode: false
+
+    - name: fusermount3 may mount sysbox-fs
+      ansible.builtin.copy:
+        dest: /etc/apparmor.d/local/fusermount3
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Written by devboxen (ansible/sysbox.yml): sysbox-fs mounts its FUSE file systems here.
+          mount fstype=fuse options=(rw,nosuid,nodev) sysboxfs -> /var/lib/sysboxfs/*/,
+          umount /var/lib/sysboxfs/*/,
+      notify: load fusermount3 AppArmor profile
+      when: fusermount3_profile.stat.exists
 
     - name: Docker daemon config (validated with dockerd --validate)
       ansible.builtin.copy:
