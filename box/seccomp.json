@@ -437,6 +437,576 @@
     },
     {
       "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 3,
+          "op": "SCMP_CMP_LT"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 7,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 8,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 9,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 10,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 13,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 14,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 15,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 16,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 17,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 18,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 21,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 22,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 24,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 26,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 27,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 28,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 29,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 30,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 31,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 32,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 33,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 35,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 36,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 39,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 41,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 42,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 43,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 44,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 45,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 2,
+          "value": 262,
+          "op": "SCMP_CMP_NE"
+        }
+      ],
+      "comment": "devbox: the address family as in the Docker default, but no IPPROTO_MPTCP (262), CVE-2026-98432"
+    },
+    {
+      "names": [
         "personality"
       ],
       "action": "SCMP_ACT_ALLOW",
@@ -830,20 +1400,6 @@
           "CAP_PERFMON"
         ]
       }
-    },
-    {
-      "names": [
-        "socket"
-      ],
-      "action": "SCMP_ACT_ALLOW",
-      "args": [
-        {
-          "index": 2,
-          "value": 262,
-          "op": "SCMP_CMP_NE"
-        }
-      ],
-      "comment": "devbox: every socket except IPPROTO_MPTCP (262), CVE-2026-98432"
     }
   ]
 }
