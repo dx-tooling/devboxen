@@ -53,6 +53,7 @@
           - --exclude=/web/compose.override.yaml
           - --exclude=.DS_Store
       loop: [box, host, web, cmd, go.mod, go.sum]
+      register: install
 
     - name: The front's password file (root-only)
       ansible.builtin.copy:
@@ -177,6 +178,17 @@
         state: "{{ 'restarted' if (web_bin.changed or web_unit.changed) else 'started' }}"
         daemon_reload: true
       when: not containers and not ansible_check_mode
+
+    # New boxes start from the image on the host: build it again when its sources changed.
+    # Running boxes keep theirs until a rebuild (below, or devbox-admin rebuild).
+    - name: The box image, built again when box/ or host/ changed
+      ansible.builtin.command: devbox-admin image
+      async: 3600
+      poll: 15
+      when: >-
+        containers and not ansible_check_mode
+        and not (devboxen_rebuild_boxes | default(false) | bool)
+        and (install.results | selectattr('item', 'in', ['box', 'host']) | selectattr('changed') | list | length > 0)
 
     - name: The boxes, recreated with the current image (their sessions end)
       ansible.builtin.command: devbox-admin rebuild

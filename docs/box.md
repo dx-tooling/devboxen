@@ -8,6 +8,12 @@ it, and from the other boxes ([security.md](security.md)). On a host with hardwa
 virtualization, each box runs in a **virtual machine** of its own by default, with its own
 kernel: [vm.md](vm.md).
 
+Every box comes with Docker, git, `gh`, Node.js, Google Chrome, Claude Code and
+[mise](https://mise.jdx.dev) (for a project's tools and tasks from its `mise.toml`). mise is
+installed with its own installer into `~/.local/bin` and updates itself (`mise self-update`);
+interactive shells activate it (`~/.bashrc`), and its shims are on PATH for everything else
+(Claude's commands, VS Code, scripts).
+
 A host can have **several boxes** (e.g. one per client or project), created, listed,
 entered and destroyed from your laptop. A box is the compose project `devbox-<name>` from
 [`box/docker-compose.yaml`](../box/docker-compose.yaml): boxes are runtime state, not
@@ -381,8 +387,11 @@ directory of their own.
 
 Anything else (e.g. packages installed with `sudo apt`) is gone when the container is
 recreated: put lasting tools into the [`Dockerfile`](../box/Dockerfile). `/home/dev` is seeded from
-the image only when the volume is first created, so a newer Claude Code in the image does not
-replace the installed one (which updates itself anyway).
+the image only when the volume is first created, so a newer Claude Code or mise in the image
+does not replace the installed one (both update themselves anyway), and a box made before mise
+was in the image does not get it on a rebuild (install it there with
+`curl -fsSL https://mise.run | sh` and the `~/.bashrc` line from the
+[`Dockerfile`](../box/Dockerfile)).
 
 **Disk:** each box's Docker writes to the host's disk, and a full disk stops everything. Its
 build cache is garbage-collected at 20 GB per box and container logs are capped

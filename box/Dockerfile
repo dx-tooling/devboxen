@@ -87,15 +87,23 @@ RUN userdel -r ubuntu 2>/dev/null || true \
     && useradd -m -u 1000 -s /bin/bash -G docker,sudo dev \
     && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev && chmod 0440 /etc/sudoers.d/dev
 
-# Claude Code (native installer, into ~/.local; it updates itself from there). /home/dev
-# is a named volume: Docker seeds it from this image on first creation only.
+# Claude Code (native installer, into ~/.local; it updates itself from there) and mise
+# (its installer, into ~/.local/bin; `mise self-update`), activated in interactive shells.
+# /home/dev is a named volume: Docker seeds it from this image on first creation only, so
+# boxes made before an image had these do not get them on a rebuild.
 USER dev
 RUN curl -fsSL https://claude.ai/install.sh | bash \
+    && curl -fsSL https://mise.run | sh \
+    && "$HOME/.local/bin/mise" --version \
+    && printf '\n# mise: the tools of mise.toml on PATH, per directory\neval "$(%s activate bash)"\n' \
+        '"$HOME/.local/bin/mise"' >>"$HOME/.bashrc" \
     && git config --global init.defaultBranch main
 USER root
 # PATH for every process. First the `claude` wrapper (it logs in with the token all boxes
-# share, see claude-wrapper.sh), then Claude Code's own install dir. Login shells reorder
-# PATH in ~/.profile; entrypoint.sh puts the wrapper back in front there.
+# share, see claude-wrapper.sh), then Claude Code's and mise's install dir, then mise's
+# shims (the tools of mise.toml for processes without an interactive shell: Claude's
+# commands, VS Code, scripts). Login shells reorder PATH in ~/.profile; entrypoint.sh puts
+# the wrapper back in front there.
 COPY claude-wrapper.sh /usr/local/lib/devbox/bin/claude
 RUN chmod 0755 /usr/local/lib/devbox/bin/claude
 # GitHub (docs/box.md, "GitHub"): over HTTPS with the token of the repository's owner, from
@@ -110,7 +118,7 @@ RUN chmod 0755 /usr/local/lib/devbox/bin/gh /usr/local/lib/devbox/git-credential
     && git config --system credential.https://github.com.useHttpPath true \
     && git config --system url.https://github.com/.insteadOf git@github.com: \
     && git config --system --add url.https://github.com/.insteadOf ssh://git@github.com/
-ENV PATH=/usr/local/lib/devbox/bin:/home/dev/.local/bin:$PATH
+ENV PATH=/usr/local/lib/devbox/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:$PATH
 
 # The inner Docker daemon's config, and the host's CVE-2026-98432 firewall (same file,
 # applied to the devbox's own network namespace; see docs/security.md).
