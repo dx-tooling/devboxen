@@ -119,7 +119,9 @@ Commits need an identity in the box: `git config --global user.name/user.email`.
 (on your laptop if Claude Code is installed there, else in a box), which prints a long-lived
 token after you log in in the browser; paste it and it is stored root-only on the host
 (`/var/lib/devbox/shared/claude-oauth-token`, mode 0400, UID 1000), mounted read-only into
-every box. Each box's `claude` is a small wrapper ([`claude-wrapper.sh`](../box/claude-wrapper.sh))
+every box. (A box whose env file `/var/lib/devbox/boxes/<name>.env` sets `DEVBOX_SHARED_DIR`
+gets that host directory there instead, e.g. one with only the Claude token and no GitHub
+tokens; devbox-admin does not maintain such a directory.) Each box's `claude` is a small wrapper ([`claude-wrapper.sh`](../box/claude-wrapper.sh))
 that exports it as `CLAUDE_CODE_OAUTH_TOKEN` and starts the real Claude Code; it is read at
 every start, so a new token (or `devbox-admin token clear`) needs no restart. Only the login
 is shared: settings, MCP servers, history and project memory stay **per box** (Claude keys

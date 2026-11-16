@@ -42,8 +42,10 @@ services:
       - home:/home/dev # checkouts, Claude Code settings + history, gh login
       - docker:/var/lib/docker # the inner Docker's images, volumes, build cache
       # Shared by all boxes, read-only: the Claude Code login token (devbox-admin token) and
-      # the GitHub tokens (devbox-admin github).
-      - /var/lib/devbox/shared:/run/devbox-shared:ro
+      # the GitHub tokens (devbox-admin github). A box's env file may set DEVBOX_SHARED_DIR to
+      # another host directory with only some of these files (e.g. only the Claude token for a
+      # workshop box that must not hold GitHub tokens); it is then kept up to date by hand.
+      - ${DEVBOX_SHARED_DIR:-/var/lib/devbox/shared}:/run/devbox-shared:ro
       # The box in the browser (devbox-web): code-server, ttyd and the session API put their
       # sockets here; the host's devbox-web reaches them, nothing else. devbox-admin creates
       # the directory (owned by UID 1000) before the box starts.
