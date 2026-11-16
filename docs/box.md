@@ -8,8 +8,11 @@ it, and from the other boxes ([security.md](security.md)). On a host with hardwa
 virtualization, each box runs in a **virtual machine** of its own by default, with its own
 kernel: [vm.md](vm.md).
 
-Every box comes with Docker, git, `gh`, Node.js, Google Chrome, Claude Code and
-[mise](https://mise.jdx.dev) (for a project's tools and tasks from its `mise.toml`). mise is
+Every box comes with Docker, git, `gh`, Node.js, Google Chrome, Claude Code, Codex CLI and
+[mise](https://mise.jdx.dev) (for a project's tools and tasks from its `mise.toml`). Codex is
+installed with OpenAI's standalone installer (`~/.local/bin/codex`; run
+`curl -fsSL https://chatgpt.com/codex/install.sh | sh` again to update it) and logs in per box:
+`codex login --device-auth` prints a link and a code to enter in your browser. mise is
 installed with its own installer into `~/.local/bin` and updates itself (`mise self-update`);
 interactive shells activate it (`~/.bashrc`), and its shims are on PATH for everything else
 (Claude's commands, VS Code, scripts).
@@ -387,11 +390,10 @@ directory of their own.
 
 Anything else (e.g. packages installed with `sudo apt`) is gone when the container is
 recreated: put lasting tools into the [`Dockerfile`](../box/Dockerfile). `/home/dev` is seeded from
-the image only when the volume is first created, so a newer Claude Code or mise in the image
-does not replace the installed one (both update themselves anyway), and a box made before mise
-was in the image does not get it on a rebuild (install it there with
-`curl -fsSL https://mise.run | sh` and the `~/.bashrc` line from the
-[`Dockerfile`](../box/Dockerfile)).
+the image only when the volume is first created, so a newer Claude Code, Codex or mise in the image
+does not replace the installed one (update them in the box), and a box made before Codex or
+mise was in the image does not get them on a rebuild (install them there with their installers,
+for mise also the `~/.bashrc` line; see the [`Dockerfile`](../box/Dockerfile)).
 
 **Disk:** each box's Docker writes to the host's disk, and a full disk stops everything. Its
 build cache is garbage-collected at 20 GB per box and container logs are capped

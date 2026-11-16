@@ -87,12 +87,16 @@ RUN userdel -r ubuntu 2>/dev/null || true \
     && useradd -m -u 1000 -s /bin/bash -G docker,sudo dev \
     && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev && chmod 0440 /etc/sudoers.d/dev
 
-# Claude Code (native installer, into ~/.local; it updates itself from there) and mise
-# (its installer, into ~/.local/bin; `mise self-update`), activated in interactive shells.
+# Claude Code (native installer, into ~/.local; it updates itself from there), Codex CLI
+# (OpenAI's standalone installer: ~/.local/bin/codex, the release in ~/.codex; running it
+# again updates it; its sandbox uses /usr/bin/bwrap, see ansible/sysbox.yml) and mise (its
+# installer, into ~/.local/bin; `mise self-update`), activated in interactive shells.
 # /home/dev is a named volume: Docker seeds it from this image on first creation only, so
 # boxes made before an image had these do not get them on a rebuild.
 USER dev
 RUN curl -fsSL https://claude.ai/install.sh | bash \
+    && curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh \
+    && "$HOME/.local/bin/codex" --version \
     && curl -fsSL https://mise.run | sh \
     && "$HOME/.local/bin/mise" --version \
     && printf '\n# mise: the tools of mise.toml on PATH, per directory\neval "$(%s activate bash)"\n' \

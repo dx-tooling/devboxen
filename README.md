@@ -46,7 +46,7 @@ organization. Use [Coder](https://github.com/coder/coder) for that.
 
 | Directory | Contents |
 |---|---|
-| [`box/`](box/) | The box image: Ubuntu, Docker, Chrome, VS Code server, terminal, Claude Code, mise ([docs](docs/box.md)) |
+| [`box/`](box/) | The box image: Ubuntu, Docker, Chrome, VS Code server, terminal, Claude Code, Codex CLI, mise ([docs](docs/box.md)) |
 | [`host/`](host/) | Commands and settings for each server: `devbox`, `devbox-admin`, firewall |
 | [`cmd/devboxen-web/`](cmd/devboxen-web/), [`web/`](web/) | The browser interface ([docs](docs/web.md)) |
 | [`ansible/`](ansible/) | Server setup and deployment |
