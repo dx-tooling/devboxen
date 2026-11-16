@@ -38,6 +38,21 @@
           Wants=var-lib-docker-volumes.mount
           After=var-lib-docker-volumes.mount
 
+    # A VM box runs nested on most hosts: the kernel's boot-time TSC sync check fails, kvm-clock
+    # then has no vDSO fast path, and every time()/clock_gettime() is a syscall (about 680 ns
+    # instead of 90 ns). Trusting the TSC (the host's clock) brings the fast path back.
+    - name: The kernel trusts the host's clock (tsc=reliable clocksource=tsc)
+      ansible.builtin.copy:
+        dest: /etc/default/grub.d/60-devboxen-clocksource.cfg
+        mode: "0644"
+        content: |
+          # devboxen (ansible/vm-guest.yml)
+          GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT tsc=reliable clocksource=tsc"
+
+    - name: The boot loader picks it up
+      ansible.builtin.command: update-grub
+      changed_when: true
+
     - name: The install directory
       ansible.builtin.file:
         path: /opt/devboxen

@@ -135,10 +135,12 @@ EOF
   rm -f "$dir/user-data" "$dir/meta-data"
 }
 
+# cache=unsafe: the host ignores the guest's flushes (much faster IO; docs/vm.md says what that
+# costs). It rules out io=native, which needs O_DIRECT.
 define() { # DOMAIN DIR MEM_MIB CPUS CID [data disk]
   local dom="$1" dir="$2" mem="$3" cpus="$4" cid="$5" data="${6:-}"
-  local disks=(--disk "path=$dir/system.qcow2,format=qcow2,bus=virtio,cache=none,io=native,discard=unmap")
-  [ -z "$data" ] || disks+=(--disk "path=$data,format=raw,bus=virtio,cache=none,io=native,discard=unmap")
+  local disks=(--disk "path=$dir/system.qcow2,format=qcow2,bus=virtio,cache=unsafe,io=threads,discard=unmap")
+  [ -z "$data" ] || disks+=(--disk "path=$data,format=raw,bus=virtio,cache=unsafe,io=threads,discard=unmap")
   disks+=(--disk "path=$dir/seed.iso,device=cdrom")
   virt-install --name "$dom" --memory "$mem" --vcpus "$cpus" --cpu host-passthrough \
     --osinfo ubuntu24.04 --import "${disks[@]}" \

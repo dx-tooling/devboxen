@@ -88,6 +88,18 @@ host
 - **Ubuntu's updates** in a VM: unattended upgrades, as on any Ubuntu, and a newer base image
   at each rebuild.
 
+## Disk cache and clock
+
+- **Disks: `cache=unsafe,io=threads`.** The host ignores the guest's flush requests, so writes
+  go through the host's page cache: much faster IO for builds, `npm install` and Docker. The
+  price: if the *host* crashes or loses power, a VM's disks can lose recent writes and, in the
+  worst case, be inconsistent. A clean `virsh shutdown`/`devbox-admin stop` and a guest crash
+  are safe. (`io=native` is not possible with it: that needs `cache=none`.)
+- **Clock: `tsc=reliable clocksource=tsc`** on the guest kernel (the base image sets it, so a
+  rebuild or a new box has it). Nested, the kernel's boot-time TSC check fails and kvm-clock
+  has no vDSO fast path, so every `time()` is a syscall (about 680 ns instead of 90 ns). The
+  kernel then no longer checks that the vCPUs' TSCs agree.
+
 ## Security
 
 Inside the VM, the box keeps every protection of a container box (Sysbox, the seccomp
