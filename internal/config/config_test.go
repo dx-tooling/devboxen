@@ -56,15 +56,17 @@ identity = "secrets/identity.txt"
 
 func TestLoadRefuses(t *testing.T) {
 	for name, content := range map[string]string{
-		"no hosts":    `default_host = "x"`,
-		"bad name":    "[hosts.Big]\nssh = \"root@x\"",
-		"not root":    "[hosts.a]\nssh = \"dev@x\"",
-		"no ssh":      "[hosts.a]\npublic_ipv4 = \"1.2.3.4\"",
-		"unknown key": "[hosts.a]\nssh = \"root@x\"\nfoo = 1",
-		"bad tls":     "[hosts.a]\nssh = \"root@x\"\n[web]\ntls = \"manual\"",
-		"bad front":   "[hosts.a]\nssh = \"root@x\"\n[web]\nfront = \"b\"",
-		"aws partial": "[hosts.a]\nssh = \"root@x\"\naws = { profile = \"p\" }",
-		"bad default": "default_host = \"b\"\n[hosts.a]\nssh = \"root@x\"",
+		"no hosts":               `default_host = "x"`,
+		"bad name":               "[hosts.Big]\nssh = \"root@x\"",
+		"not root":               "[hosts.a]\nssh = \"dev@x\"",
+		"no ssh":                 "[hosts.a]\npublic_ipv4 = \"1.2.3.4\"",
+		"unknown key":            "[hosts.a]\nssh = \"root@x\"\nfoo = 1",
+		"bad tls":                "[hosts.a]\nssh = \"root@x\"\n[web]\ntls = \"manual\"",
+		"bad front":              "[hosts.a]\nssh = \"root@x\"\n[web]\nfront = \"b\"",
+		"aws partial":            "[hosts.a]\nssh = \"root@x\"\naws = { profile = \"p\" }",
+		"bad default":            "default_host = \"b\"\n[hosts.a]\nssh = \"root@x\"",
+		"bad ssh box":            "[hosts.a]\nssh = \"root@x\"\nhost_ssh_boxes = [\"Box2\"]",
+		"ssh box, no containers": "[hosts.a]\nssh = \"root@x\"\nhost_ssh_boxes = [\"b\"]\ncontainers = false\n[hosts.f]\nssh = \"root@y\"\n[web]\nfront = \"f\"",
 	} {
 		if _, err := Load(write(t, content)); err == nil {
 			t.Errorf("%s: accepted", name)

@@ -46,6 +46,8 @@ image pulled. So:
   address of every devboxen host (chain `devbox_no_devbox_host_ssh`, set `devboxen_hosts`,
   filled from the inventory): on EC2 the Elastic IP is not on the host's interfaces, so that
   connection is forwarded and comes back in from outside, past the first chain.
+  A container box named in `host_ssh_boxes` ([config.md](config.md)) is exempt from both
+  chains. Give such a box a key for a host only if everything that runs in it may log in there.
 
 `dev` may use Docker and `sudo` in a box; both only reach the box.
 

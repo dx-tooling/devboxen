@@ -42,6 +42,9 @@ type Host struct {
 	VMs *bool `toml:"vms"`
 	// false: only VM boxes, no Docker on the host itself. Default true.
 	Containers *bool `toml:"containers"`
+	// Container boxes on this host that may reach the devboxen hosts' sshd (port 22),
+	// which the host firewall otherwise rejects for every box.
+	HostSSHBoxes []string `toml:"host_ssh_boxes"`
 }
 
 type AWS struct {
@@ -153,6 +156,14 @@ func (c *Config) check() error {
 		}
 		if !h.HasContainers() && h.VMs != nil && !*h.VMs {
 			return fmt.Errorf("hosts.%s: containers = false needs VM boxes (vms true or unset)", name)
+		}
+		for _, box := range h.HostSSHBoxes {
+			if !NameRE.MatchString(box) {
+				return fmt.Errorf("hosts.%s.host_ssh_boxes: %q is not a box name (1-11 characters, a-z, 0-9 and -)", name, box)
+			}
+		}
+		if len(h.HostSSHBoxes) > 0 && !h.HasContainers() {
+			return fmt.Errorf("hosts.%s: host_ssh_boxes is for container boxes, and containers = false", name)
 		}
 	}
 	if c.DefaultHost == "" {

@@ -3,8 +3,9 @@
 # Host firewall of a devboxen host: ONLY these two tables, never `flush ruleset` (that would
 # also wipe the rules Docker keeps in nftables via iptables-nft). Loaded by
 # host-firewall.service, followed by /etc/host-firewall-hosts.nft (the devboxen hosts'
-# addresses); all three are installed by ansible/host.yml. The box image loads this file too,
-# in each box's own network namespace (box/entrypoint.sh), where the set stays empty.
+# addresses and the boxes exempt from the SSH block); all three are installed by
+# ansible/host.yml. The box image loads this file too,
+# in each box's own network namespace (box/entrypoint.sh), where the sets stay empty.
 #
 # Each table is first created if missing, then deleted, then defined afresh: that makes a
 # reload idempotent.
@@ -38,8 +39,16 @@ table inet host_firewall {
     # the bridge dbx-<name> (fixed names, see box/docker-compose.yaml); nested containers'
     # traffic leaves a box through it too.
     # (This file is also loaded inside each box, where no such bridge exists.)
+    #
+    # Exception: the bridges in the set host_ssh_boxes (setting host_ssh_boxes in
+    # devboxen.toml, empty by default) may reach port 22, here and in
+    # devbox_no_devbox_host_ssh below. Only the firewall: such a box still has no key.
+    set host_ssh_boxes {
+        type ifname
+    }
     chain devbox_no_host_ssh {
         type filter hook input priority filter; policy accept;
+        iifname @host_ssh_boxes tcp dport 22 counter accept
         iifname "dbx-*" tcp dport 22 counter reject with tcp reset
     }
 
@@ -64,6 +73,7 @@ table inet host_firewall {
     }
     chain devbox_no_devbox_host_ssh {
         type filter hook forward priority filter; policy accept;
+        iifname @host_ssh_boxes ip daddr @devboxen_hosts tcp dport 22 counter accept
         iifname "dbx-*" ip daddr @devboxen_hosts tcp dport 22 counter reject with tcp reset
         iifname "dbv*" ip daddr @devboxen_hosts tcp dport 22 counter reject with tcp reset
     }

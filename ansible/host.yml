@@ -32,6 +32,8 @@
       {%-   set a = hostvars[h]['devboxen_public_ipv4'] | default(hostvars[h]['ansible_host']) -%}
       {%-   if a is match('^[0-9]+([.][0-9]+){3}$') -%}{{ a }},{%- endif -%}
       {%- endfor -%}
+    # Container boxes exempt from the SSH block ("box2,ops"; host_ssh_boxes in devboxen.toml).
+    host_ssh_boxes: "{{ (devboxen_host_ssh_boxes | default('')).split(',') | select | list }}"
 
   handlers:
     - name: reload host firewall
@@ -85,10 +87,14 @@
         mode: "0644"
         content: |
           # Written by devboxen (ansible/host.yml): the public addresses of all devboxen hosts,
-          # whose sshd no box may reach (host-firewall.nft, set devboxen_hosts).
+          # whose sshd no box may reach (host-firewall.nft, set devboxen_hosts), and the
+          # bridges of the boxes that may (set host_ssh_boxes).
           {% set addrs = host_addresses.split(',') | select | list %}
           {% if addrs %}
           add element inet host_firewall devboxen_hosts { {{ addrs | join(', ') }} }
+          {% endif %}
+          {% if host_ssh_boxes %}
+          add element inet host_firewall host_ssh_boxes { {% for b in host_ssh_boxes %}"dbx-{{ b }}"{{ ", " if not loop.last else "" }}{% endfor %} }
           {% endif %}
       notify: reload host firewall
 

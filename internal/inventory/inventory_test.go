@@ -15,6 +15,7 @@ func TestRender(t *testing.T) {
 [hosts.vps]
 ssh = "root@203.0.113.10"
 hardening = false
+host_ssh_boxes = ["ops", "ops-2"]
 
 [hosts.kvm]
 ssh = "root@192.0.2.30"
@@ -35,7 +36,7 @@ compose_override = "web.override.yaml"
 	}
 	inv := Render(c, "/tmp/x y/htpasswd")
 	for _, want := range []string{
-		"vps ansible_host=203.0.113.10 ansible_user=root devboxen_host_name=vps devboxen_hardening=false\n",
+		"vps ansible_host=203.0.113.10 ansible_user=root devboxen_host_name=vps devboxen_hardening=false devboxen_host_ssh_boxes=ops,ops-2\n",
 		"cloud ansible_host=cloud.example.com ansible_user=root devboxen_host_name=cloud devboxen_public_ipv4=198.51.100.20 devboxen_data_volume_id=vol-1\n",
 		"kvm ansible_host=192.0.2.30 ansible_user=root devboxen_host_name=kvm devboxen_containers=false\n",
 		"[devboxen_front]\nvps\n",

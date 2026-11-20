@@ -32,6 +32,9 @@ func Render(c *config.Config, htpasswd string) string {
 		if !h.HasContainers() {
 			vars = append(vars, "devboxen_containers=false")
 		}
+		if len(h.HostSSHBoxes) > 0 {
+			vars = append(vars, "devboxen_host_ssh_boxes="+strings.Join(h.HostSSHBoxes, ","))
+		}
 		if h.AWS != nil && h.AWS.DataVolume != "" {
 			vars = append(vars, "devboxen_data_volume_id="+h.AWS.DataVolume)
 		}
