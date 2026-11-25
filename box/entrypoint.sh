@@ -68,9 +68,14 @@ if mountpoint -q "$web"; then
 
   xvnc 98 1600x1000
   supervise web-screen-wm "" env DISPLAY=:98 matchbox-window-manager -use_titlebar no
-  supervise web-screen-chrome "" env DISPLAY=:98 google-chrome \
-    --user-data-dir=/home/dev/.config/devbox-browser --no-first-run --no-default-browser-check \
-    --password-store=basic --start-maximized
+  # If Xvnc cannot start, Chrome otherwise exits and restarts every 2 s, leaving a 4 MB
+  # BrowserMetrics file each time. Wait for a working X server, not just its socket.
+  supervise web-screen-chrome "" sh -c '
+    until DISPLAY=:98 xdpyinfo >/dev/null 2>&1; do sleep 2; done
+    exec env DISPLAY=:98 google-chrome \
+      --user-data-dir=/home/dev/.config/devbox-browser --no-first-run --no-default-browser-check \
+      --password-store=basic --start-maximized
+  '
   supervise web-screen "$web/screen.sock" node /usr/local/lib/devbox/web-vnc.js "$web/screen.sock" "$vnc/98.sock"
   supervise web-watch "$web/watch.sock" node /usr/local/lib/devbox/web-vnc.js "$web/watch.sock" "$vnc/99.sock"
 else

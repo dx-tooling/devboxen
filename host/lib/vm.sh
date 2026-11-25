@@ -6,7 +6,7 @@
 # See docs/vm.md.
 #
 #   vm create NAME MEM CPUS DISK CID   # disks from the base image, the domain, started
-#   vm state NAME                      # running | stopped | missing
+#   vm state NAME                      # running | paused | stopped | missing
 #   vm start NAME | stop NAME          # stop: a clean shutdown (90 s), then off
 #   vm reimage NAME                    # a fresh system disk from the current base image (data disk stays)
 #   vm destroy NAME                    # the domain and both disks
@@ -74,7 +74,8 @@ state() {
   local s
   s="$(virsh domstate "$(domain "$1")" 2>/dev/null)" || { echo missing; return; }
   case "$s" in
-    running | paused | "in shutdown") echo running ;;
+    running | "in shutdown") echo running ;;
+    paused) echo paused ;;
     *) echo stopped ;;
   esac
 }

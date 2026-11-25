@@ -248,6 +248,7 @@ cmd_list() {
     if [ "$kind" = vm ]; then
       case "$("$VM" state "$name")" in
         running) status=running ;;
+        paused) status=paused ;;
         stopped) status=exited ;;
         *) status=missing ;;
       esac

@@ -38,6 +38,10 @@ services:
     mem_limit: ${DEVBOX_MEM:-8g}
     pids_limit: 16384
     shm_size: 2g # Chrome (also in nested containers' own /dev/shm, which they size themselves)
+    # Xvnc's X11 sockets must not survive a box restart: Sysbox can assign a new user
+    # namespace, leaving the old sockets owned by an unmapped UID in this sticky directory.
+    tmpfs:
+      - /tmp/.X11-unix:mode=1777,size=1m
     volumes:
       - home:/home/dev # checkouts, Claude Code settings + history, gh login
       - docker:/var/lib/docker # the inner Docker's images, volumes, build cache
