@@ -36,6 +36,7 @@ supervise() {
 # something is copied, not every selection (SendPrimary=0).
 vnc=/run/devbox-vnc
 install -d -m 0700 -o dev -g dev "$vnc"
+install -d -m 1777 /tmp/.X11-unix
 xvnc() { # DISPLAY_NUMBER GEOMETRY [Xvnc options…]
   local n="$1" geometry="$2"; shift 2
   supervise "xvnc-$n" "$vnc/$n.sock" sh -c 'rm -f "/tmp/.X$1-lock" "/tmp/.X11-unix/X$1"; n="$1"; shift; exec Xvnc ":$n" "$@"' \
