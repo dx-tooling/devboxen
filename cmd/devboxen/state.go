@@ -15,7 +15,7 @@ type boxRow struct {
 	kind      string // ondemand or fixed
 	hostState string // up, an EC2 state other than running, login, error or unreachable
 	box       string
-	status    string // the container's state: running, exited, … (a stopped VM: exited)
+	status    string // container state or VM state (exited, kvm-off, libvirt-unavailable, …)
 	mem, cpus string
 	boxKind   string   // container or vm (docs/vm.md); empty from a host older than VM boxes
 	sessions  []string // a trailing * marks one with a terminal attached

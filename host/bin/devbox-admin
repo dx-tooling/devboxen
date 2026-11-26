@@ -238,7 +238,7 @@ create_vm() {
 
 cmd_list() {
   if [ "${1:-}" = --names ]; then all_boxes; return; fi
-  local name status sessions mem cpus kind
+  local name status sessions mem cpus kind vm_state
   printf '%-12s %-9s %-6s %-5s %-9s %s\n' BOX STATUS MEMORY CPUS KIND SESSIONS
   for name in $(all_boxes); do
     kind="$(kind "$name")"
@@ -246,10 +246,12 @@ cmd_list() {
     cpus="$(setting "$name" DEVBOX_CPUS)"
     sessions="-"
     if [ "$kind" = vm ]; then
-      case "$("$VM" state "$name")" in
+      vm_state="$("$VM" state "$name")"
+      case "$vm_state" in
         running) status=running ;;
         paused) status=paused ;;
         stopped) status=exited ;;
+        kvm-off | libvirt-unavailable | unavailable) status="$vm_state" ;;
         *) status=missing ;;
       esac
       if [ "$status" = running ]; then

@@ -130,11 +130,22 @@ func TestParseList(t *testing.T) {
 
 	now := "BOX          STATUS    MEMORY CPUS  KIND      SESSIONS\n" +
 		"main         running   64g    12    vm        shell* \n" +
+		"vmbox1       kvm-off   32g    16    vm        -\n" +
 		"tools        running   8g     6     container -\n" +
 		"(* = a terminal is attached)\n"
 	rows = parseList("kvm", "fixed", now)
-	if len(rows) != 2 || rows[0].boxKind != "vm" || rows[0].mem != "64g" || strings.Join(rows[0].sessions, ",") != "shell*" ||
-		rows[1].boxKind != "container" || len(rows[1].sessions) != 0 {
+	if len(rows) != 3 || rows[0].boxKind != "vm" || rows[0].mem != "64g" || strings.Join(rows[0].sessions, ",") != "shell*" ||
+		rows[1].status != "kvm-off" || rows[1].boxKind != "vm" ||
+		rows[2].boxKind != "container" || len(rows[2].sessions) != 0 {
 		t.Errorf("list with KIND: %+v", rows)
+	}
+}
+
+func TestTUIKVMOff(t *testing.T) {
+	u := &tui{rows: []boxRow{{host: "vs2", hostState: "up", box: "vmbox1", boxKind: "vm", status: "kvm-off", mem: "32g", cpus: "16"}}}
+	_, _, body := u.card("vs2", 42)
+	got := strings.Join(body, "\n")
+	if !strings.Contains(got, "stopped · KVM off") || strings.Contains(got, "missing") {
+		t.Errorf("VM with KVM off: %s", got)
 	}
 }

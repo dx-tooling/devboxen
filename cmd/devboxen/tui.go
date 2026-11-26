@@ -164,6 +164,27 @@ func hostDot(hs string) string {
 	return c(cBad, "✕")
 }
 
+func boxState(status string) (glyph, label string) {
+	switch status {
+	case "running":
+		return c(cOK, "●"), status
+	case "exited", "created":
+		return c(cDim, "○"), "stopped"
+	case "kvm-off":
+		return c(cDim, "○"), "stopped · KVM off"
+	case "paused", "restarting", "libvirt-unavailable", "unavailable":
+		label = status
+		if status == "libvirt-unavailable" {
+			label = "VM present · libvirt unavailable"
+		} else if status == "unavailable" {
+			label = "VM state unavailable"
+		}
+		return c(cWarn, "◐"), label
+	default:
+		return c(cBad, "✕"), status
+	}
+}
+
 func isClaude(session string) bool {
 	s := strings.TrimSuffix(session, "*")
 	return s == "claude" || strings.HasPrefix(s, "claude-")
@@ -246,19 +267,15 @@ func (u *tui) card(h string, iw int) (titleL, titleR string, body []string) {
 		resw = max(resw, len(boxResources(b)))
 	}
 	for _, b := range boxes {
-		st, glyph := b.status, c(cBad, "✕")
-		switch st {
-		case "running":
-			glyph = c(cOK, "●")
-		case "exited", "created":
-			glyph, st = c(cDim, "○"), "stopped"
-		case "paused", "restarting":
-			glyph = c(cWarn, "◐")
-		}
+		glyph, st := boxState(b.status)
 		line := glyph + " " + pad(c(cBold, b.box), namew) + "  " + pad(c(cDim, boxResources(b)), resw) + "  "
 		prefix := vlen(line)
 		switch {
 		case st != "running":
+			if prefix+vlen(st) > iw {
+				body = append(body, line)
+				line = "  "
+			}
 			line += c(cDim, st)
 		case len(b.sessions) == 0:
 			line += c(cDim, "no sessions")
@@ -433,11 +450,13 @@ func (u *tui) compact(cols int) []string {
 	for _, h := range u.hosts() {
 		line := hostDot(u.hostRow(h).hostState) + " " + c(cBold+";"+cAcc, h) + " "
 		for _, b := range u.boxes(h) {
-			dot := c(cDim, "○")
-			if b.status == "running" {
-				dot = c(cOK, "●")
-			}
+			dot, _ := boxState(b.status)
 			line += " " + dot + " " + b.box
+			if b.status == "kvm-off" {
+				line += c(cDim, " (KVM off)")
+			} else if b.status == "libvirt-unavailable" {
+				line += c(cWarn, " (libvirt unavailable)")
+			}
 			if len(b.sessions) > 0 {
 				line += c(cDim, " "+strings.Join(b.sessions, " "))
 			}
@@ -595,7 +614,8 @@ func (u *tui) pickBox(header string, connect bool) (string, string, bool) {
 		if len(r.sessions) > 0 {
 			sessions = "sessions: " + strings.Join(r.sessions, " ")
 		}
-		items = append(items, menuItem{fmt.Sprintf("%-20s %-9s %s", r.box+"@"+r.host, r.status, sessions), r.host + ":" + r.box})
+		_, state := boxState(r.status)
+		items = append(items, menuItem{fmt.Sprintf("%-20s %-9s %s", r.box+"@"+r.host, state, sessions), r.host + ":" + r.box})
 	}
 	if connect {
 		for _, h := range u.hosts() {
@@ -628,7 +648,8 @@ func (u *tui) ensureRunning(host, box string) bool {
 	}
 	for _, r := range u.rows {
 		if r.host == host && r.box == box && r.status != "running" {
-			if !u.t.yes(fmt.Sprintf("The box %s@%s is %s. Start it?", box, host, r.status)) {
+			_, state := boxState(r.status)
+			if !u.t.yes(fmt.Sprintf("The box %s@%s is %s. Start it?", box, host, state)) {
 				return false
 			}
 			if u.runCmd("start", u.at(host, box)) != 0 {
@@ -829,7 +850,8 @@ func (u *tui) boxesMenu() {
 		if r.status == "running" {
 			items = append(items, menuItem{"Stop " + r.box + "@" + r.host + "  (frees its memory; ends its sessions; data stays)", "stop:" + r.host + ":" + r.box})
 		} else {
-			items = append(items, menuItem{"Start " + r.box + "@" + r.host + "  (" + r.status + ")", "start:" + r.host + ":" + r.box})
+			_, state := boxState(r.status)
+			items = append(items, menuItem{"Start " + r.box + "@" + r.host + "  (" + state + ")", "start:" + r.host + ":" + r.box})
 		}
 	}
 	items = append(items, menuItem{"Destroy a box…  (deletes it and all its data)", "destroy"}, menuItem{"← Back", "back"})

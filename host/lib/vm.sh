@@ -6,7 +6,7 @@
 # See docs/vm.md.
 #
 #   vm create NAME MEM CPUS DISK CID   # disks from the base image, the domain, started
-#   vm state NAME                      # running | paused | stopped | missing
+#   vm state NAME                      # running | paused | stopped | kvm-off | libvirt-unavailable | unavailable | missing
 #   vm start NAME | stop NAME          # stop: a clean shutdown (90 s), then off
 #   vm reimage NAME                    # a fresh system disk from the current base image (data disk stays)
 #   vm destroy NAME                    # the domain and both disks
@@ -71,8 +71,24 @@ ssh_opts() { # CID -> SSH_OPTS
 }
 
 state() {
-  local s
-  s="$(virsh domstate "$(domain "$1")" 2>/dev/null)" || { echo missing; return; }
+  local s dom
+  dom="$(domain "$1")"
+  # A persistent definition survives a stopped libvirt daemon. With /dev/kvm gone,
+  # this KVM domain cannot be running; do not report it as a missing VM.
+  if [ ! -e /dev/kvm ] && [ -f "/etc/libvirt/qemu/$dom.xml" ]; then
+    echo kvm-off
+    return
+  fi
+  s="$(virsh domstate "$dom" 2>/dev/null)" || {
+    if [ -f "/etc/libvirt/qemu/$dom.xml" ]; then
+      echo libvirt-unavailable
+    elif virsh list --all --name >/dev/null 2>&1; then
+      echo missing
+    else
+      echo unavailable
+    fi
+    return
+  }
   case "$s" in
     running | "in shutdown") echo running ;;
     paused) echo paused ;;
