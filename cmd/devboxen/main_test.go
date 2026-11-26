@@ -142,10 +142,13 @@ func TestParseList(t *testing.T) {
 }
 
 func TestTUIKVMOff(t *testing.T) {
-	u := &tui{rows: []boxRow{{host: "vs2", hostState: "up", box: "vmbox1", boxKind: "vm", status: "kvm-off", mem: "32g", cpus: "16"}}}
+	u := &tui{a: &app{cfg: &config.Config{Order: []string{"vs2"}}}, rows: []boxRow{{host: "vs2", hostState: "up", box: "vmbox1", boxKind: "vm", status: "kvm-off", mem: "32g", cpus: "16"}}}
 	_, _, body := u.card("vs2", 42)
 	got := strings.Join(body, "\n")
 	if !strings.Contains(got, "stopped · KVM off") || strings.Contains(got, "missing") {
 		t.Errorf("VM with KVM off: %s", got)
+	}
+	if got := strings.Join(u.compact(80), "\n"); !strings.Contains(got, "vmbox1 (stopped · KVM off)") {
+		t.Errorf("compact VM with KVM off: %s", got)
 	}
 }

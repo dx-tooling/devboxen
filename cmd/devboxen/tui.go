@@ -453,9 +453,11 @@ func (u *tui) compact(cols int) []string {
 			dot, _ := boxState(b.status)
 			line += " " + dot + " " + b.box
 			if b.status == "kvm-off" {
-				line += c(cDim, " (KVM off)")
+				line += c(cDim, " (stopped · KVM off)")
 			} else if b.status == "libvirt-unavailable" {
-				line += c(cWarn, " (libvirt unavailable)")
+				line += c(cWarn, " (VM present · libvirt unavailable)")
+			} else if b.status == "unavailable" {
+				line += c(cWarn, " (VM state unavailable)")
 			}
 			if len(b.sessions) > 0 {
 				line += c(cDim, " "+strings.Join(b.sessions, " "))
